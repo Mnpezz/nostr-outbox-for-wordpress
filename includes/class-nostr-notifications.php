@@ -71,11 +71,19 @@ class Nostr_Login_Pay_Notifications {
             $to = $to[0]; // For now, just handle first recipient
         }
         
+        // Extract subject and message for group chat check
+        $subject = $args['subject'];
+        $message = is_array( $args['message'] ) ? implode( "\n", $args['message'] ) : $args['message'];
+        $message = wp_strip_all_tags( $message );
+        
+        // ALWAYS check if this should go to group chat, regardless of recipient
+        $this->check_and_queue_for_group_chat( $subject, $message );
+        
         // Get user by email
         $user = get_user_by( 'email', $to );
         
         if ( ! $user ) {
-            // Not a WordPress user, send email normally
+            // Not a WordPress user, send email normally (but group chat may have been queued)
             error_log( 'Nostr Notifications: Email to ' . $to . ' - not a WP user, sending email' );
             return $args;
         }
@@ -182,6 +190,8 @@ class Nostr_Login_Pay_Notifications {
         );
         
         $dm_queue[] = $new_item;
+        
+        // Note: Group chat queueing now happens at intercept_email level
         
         error_log( 'Nostr DM: About to save queue with size: ' . count( $dm_queue ) );
         
@@ -435,6 +445,372 @@ class Nostr_Login_Pay_Notifications {
         wp_send_json_success( array(
             'message' => __( 'Queue cleared', 'nostr-outbox-wordpress' ),
         ) );
+    }
+
+    /**
+     * Check if message should go to group chat and queue independently
+     * This runs for ALL emails, not just Nostr users
+     * 
+     * @param string $subject Message subject
+     * @param string $message Full message content
+     */
+    private function check_and_queue_for_group_chat( $subject, $message ) {
+        // Check if group chat is enabled
+        if ( get_option( 'nostr_group_chat_enabled', '' ) !== '1' ) {
+            return;
+        }
+        
+        // Get group members
+        $group_members_raw = get_option( 'nostr_group_chat_members', '' );
+        if ( empty( $group_members_raw ) ) {
+            return;
+        }
+        
+        // Get message type settings
+        $message_types = get_option( 'nostr_group_chat_message_types', array() );
+        
+        // Determine message type from subject/context
+        $should_send = false;
+        $subject_lower = strtolower( $subject );
+        
+        // IMPORTANT: Filter out individual/personal messages that shouldn't go to group
+        $is_individual_message = (
+            strpos( $subject_lower, 'confirmation' ) !== false ||  // "Gig Claim Confirmation"
+            strpos( $subject_lower, 'reminder' ) !== false ||      // "Reminder: You have a gig"
+            strpos( $subject_lower, 'you have been' ) !== false || // "You have been assigned"
+            strpos( $subject_lower, 'your order' ) !== false ||    // "Your order confirmation"
+            strpos( $subject_lower, 'your account' ) !== false ||  // "Your account..."
+            strpos( $subject_lower, 'welcome' ) !== false          // Welcome emails
+        );
+        
+        // Skip individual messages - they shouldn't go to group
+        if ( $is_individual_message ) {
+            error_log( 'Nostr Group Chat: Skipping individual message - Subject: ' . $subject );
+            return;
+        }
+        
+        // Now check message types for group
+        if ( strpos( $subject_lower, 'order' ) !== false && ! empty( $message_types['woocommerce_orders'] ) ) {
+            $should_send = true;
+        } elseif ( ( strpos( $subject_lower, 'new user' ) !== false || strpos( $subject_lower, 'registration' ) !== false ) && ! empty( $message_types['new_users'] ) ) {
+            $should_send = true;
+        } elseif ( strpos( $subject_lower, 'password' ) !== false && ! empty( $message_types['password_reset'] ) ) {
+            $should_send = true;
+        } elseif ( strpos( $subject_lower, 'comment' ) !== false && ! empty( $message_types['comments'] ) ) {
+            $should_send = true;
+        } elseif ( ! empty( $message_types['gig_notifications'] ) ) {
+            // Gig-related ADMIN notifications (not individual worker messages)
+            // Examples: "Gig Claimed", "Gig Unclaimed", "New Gig Available", "Gig Canceled"
+            if ( strpos( $subject_lower, 'gig' ) !== false || 
+                 strpos( $subject_lower, 'claimed' ) !== false || 
+                 strpos( $subject_lower, 'unclaimed' ) !== false ||
+                 strpos( $subject_lower, 'canceled' ) !== false ||
+                 strpos( $subject_lower, 'cancelled' ) !== false ||
+                 ( strpos( $subject_lower, 'assigned' ) !== false && strpos( $message_lower, 'admin' ) !== false ) ) {
+                $should_send = true;
+            }
+        } elseif ( ! empty( $message_types['admin_notifications'] ) ) {
+            // Default to admin notifications if no specific match
+            // But still skip if it's clearly individual
+            $should_send = true;
+        }
+        
+        if ( ! $should_send ) {
+            error_log( 'Nostr Group Chat: Message type not enabled for group - Subject: ' . $subject );
+            return;
+        }
+        
+        error_log( 'Nostr Group Chat: Queueing message for group - Subject: ' . $subject );
+        
+        // Load existing queue
+        $dm_queue = get_option( 'nostr_dm_queue', array() );
+        if ( ! is_array( $dm_queue ) ) {
+            $dm_queue = array();
+        }
+        
+        // Parse group members (one per line, can be npub or hex)
+        $members = array_filter( array_map( 'trim', explode( "\n", $group_members_raw ) ) );
+        
+        foreach ( $members as $member ) {
+            // Convert npub to hex if needed
+            $pubkey_hex = $member;
+            if ( strpos( $member, 'npub1' ) === 0 ) {
+                $pubkey_hex = $this->npub_to_hex( $member );
+                if ( ! $pubkey_hex ) {
+                    error_log( 'Nostr Group Chat: Failed to convert npub to hex: ' . $member );
+                    continue;
+                }
+            }
+            
+            // Validate hex pubkey format (64 characters)
+            if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
+                error_log( 'Nostr Group Chat: Invalid pubkey format: ' . $member );
+                continue;
+            }
+            
+            // Add to queue with [Group Chat] prefix
+            $group_item = array(
+                'id' => uniqid( 'gc_', true ),
+                'recipient' => $pubkey_hex,
+                'message' => "[Group Chat] **{$subject}**\n\n{$message}",
+                'subject' => "[Group Chat] {$subject}",
+                'username' => 'Group Member',
+                'timestamp' => time(),
+            );
+            
+            $dm_queue[] = $group_item;
+            error_log( 'Nostr Group Chat: Queued message for group member: ' . substr( $pubkey_hex, 0, 16 ) . '...' );
+        }
+        
+        // Save updated queue
+        delete_option( 'nostr_dm_queue' );
+        add_option( 'nostr_dm_queue', $dm_queue, '', 'no' );
+        
+        error_log( 'Nostr Group Chat: Queue saved with ' . count( $dm_queue ) . ' total messages' );
+    }
+
+    /**
+     * Queue message for group chat members if enabled (DEPRECATED - kept for backward compatibility)
+     * 
+     * @param string $subject Message subject
+     * @param string $message Full message content
+     * @param array &$dm_queue Queue array (passed by reference)
+     */
+    private function maybe_queue_for_group_chat( $subject, $message, &$dm_queue ) {
+        // Check if group chat is enabled
+        if ( get_option( 'nostr_group_chat_enabled', '' ) !== '1' ) {
+            return;
+        }
+        
+        // Get group members
+        $group_members_raw = get_option( 'nostr_group_chat_members', '' );
+        if ( empty( $group_members_raw ) ) {
+            return;
+        }
+        
+        // Get message type settings
+        $message_types = get_option( 'nostr_group_chat_message_types', array() );
+        
+        // Determine message type from subject/context
+        $should_send = false;
+        $subject_lower = strtolower( $subject );
+        
+        if ( strpos( $subject_lower, 'order' ) !== false && ! empty( $message_types['woocommerce_orders'] ) ) {
+            $should_send = true;
+        } elseif ( ( strpos( $subject_lower, 'new user' ) !== false || strpos( $subject_lower, 'registration' ) !== false ) && ! empty( $message_types['new_users'] ) ) {
+            $should_send = true;
+        } elseif ( strpos( $subject_lower, 'password' ) !== false && ! empty( $message_types['password_reset'] ) ) {
+            $should_send = true;
+        } elseif ( strpos( $subject_lower, 'comment' ) !== false && ! empty( $message_types['comments'] ) ) {
+            $should_send = true;
+        } elseif ( ( strpos( $subject_lower, 'gig' ) !== false || strpos( $subject_lower, 'claim' ) !== false || strpos( $subject_lower, 'reminder' ) !== false ) && ! empty( $message_types['gig_notifications'] ) ) {
+            // Gig-related notifications (new gig, claimed, assigned, reminder, canceled)
+            $should_send = true;
+        } elseif ( ! empty( $message_types['admin_notifications'] ) ) {
+            // Default to admin notifications if no specific match
+            $should_send = true;
+        }
+        
+        if ( ! $should_send ) {
+            return;
+        }
+        
+        // Parse group members (one per line, can be npub or hex)
+        $members = array_filter( array_map( 'trim', explode( "\n", $group_members_raw ) ) );
+        
+        foreach ( $members as $member ) {
+            // Convert npub to hex if needed
+            $pubkey_hex = $member;
+            if ( strpos( $member, 'npub1' ) === 0 ) {
+                // Try to convert npub to hex (you'll need to implement this or use a library)
+                $pubkey_hex = $this->npub_to_hex( $member );
+                if ( ! $pubkey_hex ) {
+                    error_log( 'Nostr Group Chat: Failed to convert npub to hex: ' . $member );
+                    continue;
+                }
+            }
+            
+            // Validate hex pubkey format (64 characters)
+            if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
+                error_log( 'Nostr Group Chat: Invalid pubkey format: ' . $member );
+                continue;
+            }
+            
+            // Add to queue with [Group Chat] prefix
+            $group_item = array(
+                'id' => uniqid( 'gc_', true ),
+                'recipient' => $pubkey_hex,
+                'message' => "[Group Chat] {$message}",
+                'subject' => "[Group Chat] {$subject}",
+                'username' => 'Group Member',
+                'timestamp' => time(),
+            );
+            
+            $dm_queue[] = $group_item;
+            error_log( 'Nostr Group Chat: Queued message for group member: ' . substr( $pubkey_hex, 0, 16 ) . '...' );
+        }
+    }
+
+    /**
+     * Convert npub (bech32) to hex pubkey
+     * 
+     * @param string $npub The npub string
+     * @return string|false Hex pubkey or false on failure
+     */
+    private function npub_to_hex( $npub ) {
+        if ( strpos( $npub, 'npub1' ) !== 0 ) {
+            return false;
+        }
+        
+        // Remove 'npub1' prefix
+        $data = substr( $npub, 5 );
+        
+        // Bech32 charset
+        $charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        
+        // Convert bech32 to 5-bit groups
+        $values = array();
+        for ( $i = 0; $i < strlen( $data ); $i++ ) {
+            $char = $data[$i];
+            $pos = strpos( $charset, $char );
+            if ( $pos === false ) {
+                error_log( 'Nostr: Invalid bech32 character in npub: ' . $char );
+                return false;
+            }
+            $values[] = $pos;
+        }
+        
+        // Remove checksum (last 6 characters)
+        $values = array_slice( $values, 0, count( $values ) - 6 );
+        
+        // Convert from 5-bit groups to 8-bit groups
+        $hex = '';
+        $accumulator = 0;
+        $bits = 0;
+        
+        foreach ( $values as $value ) {
+            $accumulator = ( $accumulator << 5 ) | $value;
+            $bits += 5;
+            
+            while ( $bits >= 8 ) {
+                $bits -= 8;
+                $byte = ( $accumulator >> $bits ) & 0xFF;
+                $hex .= str_pad( dechex( $byte ), 2, '0', STR_PAD_LEFT );
+                $accumulator &= ( 1 << $bits ) - 1;
+            }
+        }
+        
+        // Validate length (should be 64 hex characters = 32 bytes)
+        if ( strlen( $hex ) !== 64 ) {
+            error_log( 'Nostr: Invalid npub length after conversion: ' . strlen( $hex ) . ' (expected 64)' );
+            return false;
+        }
+        
+        return $hex;
+    }
+    
+    /**
+     * Convert hex pubkey to npub (bech32)
+     * 
+     * @param string $hex Hex pubkey (64 characters)
+     * @return string|false npub string or false on failure
+     */
+    private function hex_to_npub( $hex ) {
+        if ( strlen( $hex ) !== 64 || ! ctype_xdigit( $hex ) ) {
+            return false;
+        }
+        
+        // Convert hex to bytes
+        $bytes = array();
+        for ( $i = 0; $i < strlen( $hex ); $i += 2 ) {
+            $bytes[] = hexdec( substr( $hex, $i, 2 ) );
+        }
+        
+        // Convert 8-bit groups to 5-bit groups
+        $values = array();
+        $accumulator = 0;
+        $bits = 0;
+        
+        foreach ( $bytes as $byte ) {
+            $accumulator = ( $accumulator << 8 ) | $byte;
+            $bits += 8;
+            
+            while ( $bits >= 5 ) {
+                $bits -= 5;
+                $values[] = ( $accumulator >> $bits ) & 0x1F;
+                $accumulator &= ( 1 << $bits ) - 1;
+            }
+        }
+        
+        // Add checksum
+        $checksum = $this->bech32_create_checksum( 'npub', $values );
+        $values = array_merge( $values, $checksum );
+        
+        // Convert to bech32 string
+        $charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        $result = 'npub1';
+        foreach ( $values as $value ) {
+            $result .= $charset[$value];
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Create bech32 checksum
+     * 
+     * @param string $hrp Human-readable part
+     * @param array $data Data values
+     * @return array Checksum values
+     */
+    private function bech32_create_checksum( $hrp, $data ) {
+        $values = $this->bech32_hrp_expand( $hrp );
+        $values = array_merge( $values, $data );
+        $values = array_merge( $values, array( 0, 0, 0, 0, 0, 0 ) );
+        $mod = $this->bech32_polymod( $values ) ^ 1;
+        
+        $checksum = array();
+        for ( $i = 0; $i < 6; $i++ ) {
+            $checksum[] = ( $mod >> ( 5 * ( 5 - $i ) ) ) & 31;
+        }
+        
+        return $checksum;
+    }
+    
+    /**
+     * Expand HRP for bech32
+     */
+    private function bech32_hrp_expand( $hrp ) {
+        $result = array();
+        for ( $i = 0; $i < strlen( $hrp ); $i++ ) {
+            $result[] = ord( $hrp[$i] ) >> 5;
+        }
+        $result[] = 0;
+        for ( $i = 0; $i < strlen( $hrp ); $i++ ) {
+            $result[] = ord( $hrp[$i] ) & 31;
+        }
+        return $result;
+    }
+    
+    /**
+     * Bech32 polymod function
+     */
+    private function bech32_polymod( $values ) {
+        $generator = array( 0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3 );
+        $chk = 1;
+        
+        foreach ( $values as $value ) {
+            $top = $chk >> 25;
+            $chk = ( ( $chk & 0x1ffffff ) << 5 ) ^ $value;
+            
+            for ( $i = 0; $i < 5; $i++ ) {
+                if ( ( $top >> $i ) & 1 ) {
+                    $chk ^= $generator[$i];
+                }
+            }
+        }
+        
+        return $chk;
     }
 }
 
