@@ -448,125 +448,134 @@ class Nostr_Login_Pay_Notifications {
     }
 
     /**
-     * Check if message should go to group chat and queue independently
+     * Check if message should go to group chats and queue independently
      * This runs for ALL emails, not just Nostr users
      * 
      * @param string $subject Message subject
      * @param string $message Full message content
      */
     private function check_and_queue_for_group_chat( $subject, $message ) {
-        // Check if group chat is enabled
-        if ( get_option( 'nostr_group_chat_enabled', '' ) !== '1' ) {
+        // Get all groups
+        $groups = get_option( 'nostr_group_chats', array() );
+        if ( empty( $groups ) ) {
             return;
         }
         
-        // Get group members
-        $group_members_raw = get_option( 'nostr_group_chat_members', '' );
-        if ( empty( $group_members_raw ) ) {
-            return;
-        }
-        
-        // Get message type settings
-        $message_types = get_option( 'nostr_group_chat_message_types', array() );
-        
-        // Determine message type from subject/context
-        $should_send = false;
-        $subject_lower = strtolower( $subject );
-        
-        // IMPORTANT: Filter out individual/personal messages that shouldn't go to group
-        $is_individual_message = (
-            strpos( $subject_lower, 'confirmation' ) !== false ||  // "Gig Claim Confirmation"
-            strpos( $subject_lower, 'reminder' ) !== false ||      // "Reminder: You have a gig"
-            strpos( $subject_lower, 'you have been' ) !== false || // "You have been assigned"
-            strpos( $subject_lower, 'your order' ) !== false ||    // "Your order confirmation"
-            strpos( $subject_lower, 'your account' ) !== false ||  // "Your account..."
-            strpos( $subject_lower, 'welcome' ) !== false          // Welcome emails
-        );
-        
-        // Skip individual messages - they shouldn't go to group
-        if ( $is_individual_message ) {
-            error_log( 'Nostr Group Chat: Skipping individual message - Subject: ' . $subject );
-            return;
-        }
-        
-        // Now check message types for group
-        if ( strpos( $subject_lower, 'order' ) !== false && ! empty( $message_types['woocommerce_orders'] ) ) {
-            $should_send = true;
-        } elseif ( ( strpos( $subject_lower, 'new user' ) !== false || strpos( $subject_lower, 'registration' ) !== false ) && ! empty( $message_types['new_users'] ) ) {
-            $should_send = true;
-        } elseif ( strpos( $subject_lower, 'password' ) !== false && ! empty( $message_types['password_reset'] ) ) {
-            $should_send = true;
-        } elseif ( strpos( $subject_lower, 'comment' ) !== false && ! empty( $message_types['comments'] ) ) {
-            $should_send = true;
-        } elseif ( ! empty( $message_types['gig_notifications'] ) ) {
-            // Gig-related ADMIN notifications (not individual worker messages)
-            // Examples: "Gig Claimed", "Gig Unclaimed", "New Gig Available", "Gig Canceled"
-            if ( strpos( $subject_lower, 'gig' ) !== false || 
-                 strpos( $subject_lower, 'claimed' ) !== false || 
-                 strpos( $subject_lower, 'unclaimed' ) !== false ||
-                 strpos( $subject_lower, 'canceled' ) !== false ||
-                 strpos( $subject_lower, 'cancelled' ) !== false ||
-                 ( strpos( $subject_lower, 'assigned' ) !== false && strpos( $message_lower, 'admin' ) !== false ) ) {
-                $should_send = true;
-            }
-        } elseif ( ! empty( $message_types['admin_notifications'] ) ) {
-            // Default to admin notifications if no specific match
-            // But still skip if it's clearly individual
-            $should_send = true;
-        }
-        
-        if ( ! $should_send ) {
-            error_log( 'Nostr Group Chat: Message type not enabled for group - Subject: ' . $subject );
-            return;
-        }
-        
-        error_log( 'Nostr Group Chat: Queueing message for group - Subject: ' . $subject );
-        
-        // Load existing queue
-        $dm_queue = get_option( 'nostr_dm_queue', array() );
-        if ( ! is_array( $dm_queue ) ) {
-            $dm_queue = array();
-        }
-        
-        // Parse group members (one per line, can be npub or hex)
-        $members = array_filter( array_map( 'trim', explode( "\n", $group_members_raw ) ) );
-        
-        foreach ( $members as $member ) {
-            // Convert npub to hex if needed
-            $pubkey_hex = $member;
-            if ( strpos( $member, 'npub1' ) === 0 ) {
-                $pubkey_hex = $this->npub_to_hex( $member );
-                if ( ! $pubkey_hex ) {
-                    error_log( 'Nostr Group Chat: Failed to convert npub to hex: ' . $member );
-                    continue;
-                }
-            }
-            
-            // Validate hex pubkey format (64 characters)
-            if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
-                error_log( 'Nostr Group Chat: Invalid pubkey format: ' . $member );
+        // Iterate through each group
+        foreach ( $groups as $group_id => $group ) {
+            // Skip if group is disabled
+            if ( empty( $group['enabled'] ) || $group['enabled'] !== '1' ) {
                 continue;
             }
             
-            // Add to queue with [Group Chat] prefix
-            $group_item = array(
-                'id' => uniqid( 'gc_', true ),
-                'recipient' => $pubkey_hex,
-                'message' => "[Group Chat] **{$subject}**\n\n{$message}",
-                'subject' => "[Group Chat] {$subject}",
-                'username' => 'Group Member',
-                'timestamp' => time(),
+            // Skip if no members
+            if ( empty( $group['members'] ) ) {
+                continue;
+            }
+            
+            // Get message type settings for this group
+            $message_types = isset( $group['message_types'] ) ? $group['message_types'] : array();
+            
+            // Determine message type from subject/context
+            $should_send = false;
+            $subject_lower = strtolower( $subject );
+            $message_lower = strtolower( $message );
+            
+            // IMPORTANT: Filter out individual/personal messages that shouldn't go to group
+            $is_individual_message = (
+                strpos( $subject_lower, 'confirmation' ) !== false ||  // "Gig Claim Confirmation"
+                strpos( $subject_lower, 'reminder' ) !== false ||      // "Reminder: You have a gig"
+                strpos( $subject_lower, 'you have been' ) !== false || // "You have been assigned"
+                strpos( $subject_lower, 'your order' ) !== false ||    // "Your order confirmation"
+                strpos( $subject_lower, 'your account' ) !== false ||  // "Your account..."
+                strpos( $subject_lower, 'welcome' ) !== false          // Welcome emails
             );
             
-            $dm_queue[] = $group_item;
-            error_log( 'Nostr Group Chat: Queued message for group member: ' . substr( $pubkey_hex, 0, 16 ) . '...' );
-        }
-        
-        // Save updated queue
-        delete_option( 'nostr_dm_queue' );
-        add_option( 'nostr_dm_queue', $dm_queue, '', 'no' );
-        
-        error_log( 'Nostr Group Chat: Queue saved with ' . count( $dm_queue ) . ' total messages' );
+            // Skip individual messages - they shouldn't go to this group
+            if ( $is_individual_message ) {
+                error_log( 'Nostr Group Chat [' . $group['name'] . ']: Skipping individual message - Subject: ' . $subject );
+                continue;
+            }
+            
+            // Now check message types for this group
+            if ( strpos( $subject_lower, 'order' ) !== false && ! empty( $message_types['woocommerce_orders'] ) ) {
+                $should_send = true;
+            } elseif ( ( strpos( $subject_lower, 'new user' ) !== false || strpos( $subject_lower, 'registration' ) !== false ) && ! empty( $message_types['new_users'] ) ) {
+                $should_send = true;
+            } elseif ( strpos( $subject_lower, 'password' ) !== false && ! empty( $message_types['password_reset'] ) ) {
+                $should_send = true;
+            } elseif ( strpos( $subject_lower, 'comment' ) !== false && ! empty( $message_types['comments'] ) ) {
+                $should_send = true;
+            } elseif ( ! empty( $message_types['gig_notifications'] ) ) {
+                // Gig-related ADMIN notifications (not individual worker messages)
+                // Examples: "Gig Claimed", "Gig Unclaimed", "New Gig Available", "Gig Canceled"
+                if ( strpos( $subject_lower, 'gig' ) !== false || 
+                     strpos( $subject_lower, 'claimed' ) !== false || 
+                     strpos( $subject_lower, 'unclaimed' ) !== false ||
+                     strpos( $subject_lower, 'canceled' ) !== false ||
+                     strpos( $subject_lower, 'cancelled' ) !== false ||
+                     ( strpos( $subject_lower, 'assigned' ) !== false && strpos( $message_lower, 'admin' ) !== false ) ) {
+                    $should_send = true;
+                }
+            } elseif ( ! empty( $message_types['admin_notifications'] ) ) {
+                // Default to admin notifications if no specific match
+                // But still skip if it's clearly individual
+                $should_send = true;
+            }
+            
+            if ( ! $should_send ) {
+                error_log( 'Nostr Group Chat [' . $group['name'] . ']: Message type not enabled - Subject: ' . $subject );
+                continue;
+            }
+            
+            error_log( 'Nostr Group Chat [' . $group['name'] . ']: Queueing message - Subject: ' . $subject );
+            
+            // Load existing queue
+            $dm_queue = get_option( 'nostr_dm_queue', array() );
+            if ( ! is_array( $dm_queue ) ) {
+                $dm_queue = array();
+            }
+            
+            // Parse group members (one per line, can be npub or hex)
+            $members = array_filter( array_map( 'trim', explode( "\n", $group['members'] ) ) );
+            
+            foreach ( $members as $member ) {
+                // Convert npub to hex if needed
+                $pubkey_hex = $member;
+                if ( strpos( $member, 'npub1' ) === 0 ) {
+                    $pubkey_hex = $this->npub_to_hex( $member );
+                    if ( ! $pubkey_hex ) {
+                        error_log( 'Nostr Group Chat [' . $group['name'] . ']: Failed to convert npub to hex: ' . $member );
+                        continue;
+                    }
+                }
+                
+                // Validate hex pubkey format (64 characters)
+                if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
+                    error_log( 'Nostr Group Chat [' . $group['name'] . ']: Invalid pubkey format: ' . $member );
+                    continue;
+                }
+                
+                // Add to queue with [Group Name] prefix
+                $group_item = array(
+                    'id' => uniqid( 'gc_', true ),
+                    'recipient' => $pubkey_hex,
+                    'message' => "[{$group['name']}] **{$subject}**\n\n{$message}",
+                    'subject' => "[{$group['name']}] {$subject}",
+                    'username' => 'Group: ' . $group['name'],
+                    'timestamp' => time(),
+                );
+                
+                $dm_queue[] = $group_item;
+                error_log( 'Nostr Group Chat [' . $group['name'] . ']: Queued message for member: ' . substr( $pubkey_hex, 0, 16 ) . '...' );
+            }
+            
+            // Save updated queue
+            delete_option( 'nostr_dm_queue' );
+            add_option( 'nostr_dm_queue', $dm_queue, '', 'no' );
+            
+            error_log( 'Nostr Group Chat [' . $group['name'] . ']: Queue saved for ' . count( $members ) . ' members. Total queue: ' . count( $dm_queue ) );
+        } // end foreach group
     }
 
     /**
