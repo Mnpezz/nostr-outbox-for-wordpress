@@ -422,7 +422,7 @@ class WC_Gateway_NWC extends WC_Payment_Gateway {
                 'nwcCheckout',
                 array(
                     'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                    'nonce' => wp_create_nonce( 'nostr-login-pay-nonce' ),
+                    'nonce' => wp_create_nonce( 'nostr-outbox-wordpress-nonce' ),
                 )
             );
         }
