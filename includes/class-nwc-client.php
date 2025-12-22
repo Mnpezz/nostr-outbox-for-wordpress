@@ -25,7 +25,7 @@ class Nostr_Login_Pay_NWC_Client {
     public function make_request( $connection, $method, $params = array() ) {
         // Validate connection
         if ( empty( $connection['pubkey'] ) || empty( $connection['relay'] ) || empty( $connection['secret'] ) ) {
-            return new WP_Error( 'invalid_connection', __( 'Invalid NWC connection data', 'nostr-login-pay' ) );
+            return new WP_Error( 'invalid_connection', __( 'Invalid NWC connection data', 'nostr-outbox-wordpress' ) );
         }
 
         // Create NWC request event
@@ -144,7 +144,7 @@ class Nostr_Login_Pay_NWC_Client {
         
         return new WP_Error(
             'not_implemented',
-            __( 'NWC protocol communication not yet fully implemented. This requires WebSocket support.', 'nostr-login-pay' )
+            __( 'NWC protocol communication not yet fully implemented. This requires WebSocket support.', 'nostr-outbox-wordpress' )
         );
     }
 
@@ -156,7 +156,7 @@ class Nostr_Login_Pay_NWC_Client {
      */
     private function parse_nwc_response( $response_event ) {
         if ( empty( $response_event['content'] ) ) {
-            return new WP_Error( 'empty_response', __( 'Empty response from wallet', 'nostr-login-pay' ) );
+            return new WP_Error( 'empty_response', __( 'Empty response from wallet', 'nostr-outbox-wordpress' ) );
         }
 
         // Decrypt content
@@ -182,7 +182,7 @@ class Nostr_Login_Pay_NWC_Client {
         // For now, return error indicating this needs implementation
         return new WP_Error(
             'not_implemented',
-            __( 'NIP-04 encryption not yet implemented. Requires secp256k1 library.', 'nostr-login-pay' )
+            __( 'NIP-04 encryption not yet implemented. Requires secp256k1 library.', 'nostr-outbox-wordpress' )
         );
     }
 
@@ -202,7 +202,7 @@ class Nostr_Login_Pay_NWC_Client {
         // For now, return error indicating this needs implementation
         return new WP_Error(
             'not_implemented',
-            __( 'Nostr event signing not yet implemented. Requires secp256k1 library.', 'nostr-login-pay' )
+            __( 'Nostr event signing not yet implemented. Requires secp256k1 library.', 'nostr-outbox-wordpress' )
         );
     }
 }
