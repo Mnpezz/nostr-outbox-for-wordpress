@@ -19,7 +19,7 @@ if ( ! isset( $order_id ) ) {
 $order = wc_get_order( $order_id );
 
 if ( ! $order ) {
-    echo '<p>' . esc_html__( 'Order not found.', 'nostr-login-pay' ) . '</p>';
+    echo '<p>' . esc_html__( 'Order not found.', 'nostr-outbox-wordpress' ) . '</p>';
     return;
 }
 
@@ -31,7 +31,7 @@ $payment_hash = $order->get_meta( '_nwc_payment_hash' );
 <div class="nwc-payment-container" id="nwc-payment-<?php echo esc_attr( $order_id ); ?>">
     <div class="nwc-payment-header" style="text-align: center; padding: 20px; background: #f0f9ff; border-radius: 8px; margin-bottom: 20px;">
         <h2 style="margin: 0 0 10px 0; color: #1e40af;">
-            ⚡ <?php esc_html_e( 'Lightning Payment', 'nostr-login-pay' ); ?>
+            ⚡ <?php esc_html_e( 'Lightning Payment', 'nostr-outbox-wordpress' ); ?>
         </h2>
         <p style="margin: 0; font-size: 24px; font-weight: bold; color: #0ea5e9;">
             <?php echo number_format( $amount_sats ); ?> <span style="font-size: 18px;">sats</span>
@@ -44,7 +44,7 @@ $payment_hash = $order->get_meta( '_nwc_payment_hash' );
     <div id="nwc-payment-status" class="nwc-payment-status" style="text-align: center; padding: 30px;">
         <!-- Status will be updated by JavaScript -->
         <div class="spinner" style="margin: 20px auto; border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;"></div>
-        <p style="color: #64748b; margin-top: 15px;"><?php esc_html_e( 'Creating Lightning invoice...', 'nostr-login-pay' ); ?></p>
+        <p style="color: #64748b; margin-top: 15px;"><?php esc_html_e( 'Creating Lightning invoice...', 'nostr-outbox-wordpress' ); ?></p>
     </div>
 
     <div id="nwc-invoice-display" class="nwc-invoice-display" style="display: none; text-align: center; padding: 20px;">
@@ -53,8 +53,8 @@ $payment_hash = $order->get_meta( '_nwc_payment_hash' );
 
     <div id="nwc-payment-complete" class="nwc-payment-complete" style="display: none; text-align: center; padding: 30px; background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px;">
         <div style="font-size: 48px; margin-bottom: 10px;">✓</div>
-        <h3 style="color: #15803d; margin: 0 0 10px 0;"><?php esc_html_e( 'Payment Received!', 'nostr-login-pay' ); ?></h3>
-        <p style="color: #166534; margin: 0;"><?php esc_html_e( 'Your order is being processed.', 'nostr-login-pay' ); ?></p>
+        <h3 style="color: #15803d; margin: 0 0 10px 0;"><?php esc_html_e( 'Payment Received!', 'nostr-outbox-wordpress' ); ?></h3>
+        <p style="color: #166534; margin: 0;"><?php esc_html_e( 'Your order is being processed.', 'nostr-outbox-wordpress' ); ?></p>
     </div>
 
     <div id="nwc-payment-error" class="nwc-payment-error" style="display: none; text-align: center; padding: 20px; background: #fee; border: 2px solid #ef4444; border-radius: 8px;">
