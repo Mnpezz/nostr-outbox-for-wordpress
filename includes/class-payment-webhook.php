@@ -28,7 +28,7 @@ class Nostr_Login_Pay_Payment_Webhook {
      * Register webhook REST endpoint
      */
     public function register_webhook_endpoint() {
-        register_rest_route( 'nostr-login-pay/v1', '/webhook/payment', array(
+        register_rest_route( 'nostr-outbox-wordpress/v1', '/webhook/payment', array(
             'methods' => 'POST',
             'callback' => array( $this, 'handle_payment_webhook' ),
             'permission_callback' => '__return_true', // Webhooks are public but we verify signature
@@ -90,7 +90,7 @@ class Nostr_Login_Pay_Payment_Webhook {
             if ( ! in_array( $order->get_status(), array( 'processing', 'completed' ) ) ) {
                 $order->payment_complete();
                 $order->add_order_note( sprintf(
-                    __( 'Lightning payment confirmed via webhook. Amount: %d sats', 'nostr-login-pay' ),
+                    __( 'Lightning payment confirmed via webhook. Amount: %d sats', 'nostr-outbox-wordpress' ),
                     $amount_received
                 ) );
 
@@ -162,7 +162,7 @@ class Nostr_Login_Pay_Payment_Webhook {
      * @return string Webhook URL
      */
     public static function get_webhook_url() {
-        return rest_url( 'nostr-login-pay/v1/webhook/payment' );
+        return rest_url( 'nostr-outbox-wordpress/v1/webhook/payment' );
     }
 }
 
