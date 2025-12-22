@@ -188,17 +188,6 @@ class Nostr_Login_Pay_Admin_Settings {
         // Trim whitespace
         $value = trim( $value );
         
-        // Fix common typo: "nostr walletconnect" should be "nostr+walletconnect"
-        if ( strpos( $value, 'nostr walletconnect://' ) === 0 ) {
-            $value = str_replace( 'nostr walletconnect://', 'nostr+walletconnect://', $value );
-            add_settings_error(
-                'nostr_login_pay_nwc_merchant_wallet',
-                'nwc_fixed',
-                __( 'Connection string was automatically corrected (added missing + sign).', 'nostr-outbox-wordpress' ),
-                'success'
-            );
-        }
-        
         // Decode URL encoding (Coinos provides URL-encoded strings like wss%3A%2F%2F)
         // Check if it contains URL encoding before decoding
         if ( strpos( $value, '%' ) !== false ) {
@@ -210,6 +199,18 @@ class Nostr_Login_Pay_Admin_Settings {
                 'nwc_decoded',
                 __( 'Connection string was automatically decoded from URL format.', 'nostr-outbox-wordpress' ),
                 'updated'
+            );
+        }
+        
+        // Fix common typo: "nostr walletconnect" should be "nostr+walletconnect"
+        // This also fixes when urldecode() converts + to space
+        if ( strpos( $value, 'nostr walletconnect://' ) === 0 ) {
+            $value = str_replace( 'nostr walletconnect://', 'nostr+walletconnect://', $value );
+            add_settings_error(
+                'nostr_login_pay_nwc_merchant_wallet',
+                'nwc_fixed',
+                __( 'Connection string was automatically corrected (added missing + sign).', 'nostr-outbox-wordpress' ),
+                'success'
             );
         }
         
