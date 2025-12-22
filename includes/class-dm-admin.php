@@ -700,18 +700,6 @@ class Nostr_Login_Pay_DM_Admin {
                         <td>
                             <select id="dm-recipient-select" style="width: 400px;">
                                 <option value="">-- <?php _e( 'Select User', 'nostr-outbox-wordpress' ); ?> --</option>
-                                <?php
-                                // Show group chat option if enabled
-                                $group_enabled = get_option( 'nostr_group_chat_enabled', '' );
-                                $group_members = get_option( 'nostr_group_chat_members', '' );
-                                if ( $group_enabled === '1' && ! empty( trim( $group_members ) ) ) :
-                                    $member_count = count( array_filter( explode( "\n", $group_members ) ) );
-                                ?>
-                                    <option value="group_chat" style="font-weight: 600; background: #f0f9ff;">
-                                        👥 <?php echo esc_html( sprintf( __( 'Group Chat (%d members)', 'nostr-outbox-wordpress' ), $member_count ) ); ?>
-                                    </option>
-                                    <option value="" disabled>──────────</option>
-                                <?php endif; ?>
                                 <?php foreach ( $users as $user ) : ?>
                                     <?php $pubkey = get_user_meta( $user->ID, 'nostr_pubkey', true ); ?>
                                     <option value="<?php echo esc_attr( $pubkey ); ?>">
@@ -729,6 +717,30 @@ class Nostr_Login_Pay_DM_Admin {
                                     style="width: 400px; font-family: monospace;"
                                 />
                             </div>
+                            
+                            <?php
+                            // Show groups section if any groups exist
+                            $groups = get_option( 'nostr_group_chats', array() );
+                            $enabled_groups = array_filter( $groups, function( $g ) { return ! empty( $g['enabled'] ) && $g['enabled'] === '1'; } );
+                            if ( ! empty( $enabled_groups ) ) :
+                            ?>
+                                <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
+                                    <h4 style="margin: 0 0 10px 0;">👥 <?php _e( 'Or send to groups:', 'nostr-outbox-wordpress' ); ?></h4>
+                                    <p style="margin: 0 0 10px 0; color: #666; font-size: 13px;">
+                                        <?php _e( 'Select one or more groups. Recipient selection above will be ignored if groups are selected.', 'nostr-outbox-wordpress' ); ?>
+                                    </p>
+                                    <?php foreach ( $enabled_groups as $group ) : ?>
+                                        <?php
+                                        $member_count = count( array_filter( explode( "\n", $group['members'] ) ) );
+                                        ?>
+                                        <label style="display: block; margin-bottom: 8px; padding: 8px; background: white; border-radius: 4px; cursor: pointer;">
+                                            <input type="checkbox" name="group_recipients[]" value="<?php echo esc_attr( $group['id'] ); ?>" class="group-checkbox">
+                                            <strong><?php echo esc_html( $group['name'] ); ?></strong>
+                                            <span style="color: #666; font-size: 12px;">(<?php echo $member_count; ?> members)</span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     
@@ -801,20 +813,22 @@ class Nostr_Login_Pay_DM_Admin {
             
             const select = document.getElementById('dm-recipient-select');
             let recipient = select.value;
-            let sendToGroup = false;
             
-            if (recipient === 'group_chat') {
-                sendToGroup = true;
-            } else if (recipient === 'custom') {
+            if (recipient === 'custom') {
                 recipient = document.getElementById('dm-recipient-custom').value.trim();
             }
+            
+            // Check if any groups are selected
+            const groupCheckboxes = document.querySelectorAll('.group-checkbox:checked');
+            const selectedGroups = Array.from(groupCheckboxes).map(cb => cb.value);
             
             const subject = document.getElementById('dm-subject').value.trim();
             const message = document.getElementById('dm-message').value.trim();
             const status = document.getElementById('compose-status');
             
-            if (!sendToGroup && !recipient) {
-                status.innerHTML = '<div class="notice notice-error"><p>Please select or enter a recipient.</p></div>';
+            // Validation: need either a recipient or at least one group
+            if (!recipient && selectedGroups.length === 0) {
+                status.innerHTML = '<div class="notice notice-error"><p>Please select a recipient or at least one group.</p></div>';
                 return;
             }
             
@@ -825,25 +839,35 @@ class Nostr_Login_Pay_DM_Admin {
             
             status.innerHTML = '<div class="notice notice-info"><p>Sending...</p></div>';
             
+            const formData = new URLSearchParams({
+                action: 'send_manual_dm',
+                nonce: '<?php echo wp_create_nonce( 'send-manual-dm' ); ?>',
+                recipient: recipient || '',
+                subject: subject,
+                message: message,
+                selected_groups: selectedGroups.join(',')
+            });
+            
             fetch(ajaxurl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    action: 'send_manual_dm',
-                    nonce: '<?php echo wp_create_nonce( 'send-manual-dm' ); ?>',
-                    recipient: recipient || '',
-                    subject: subject,
-                    message: message,
-                    send_to_group: sendToGroup ? '1' : '0'
-                })
+                body: formData
             })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
                     const count = data.data?.count || 1;
-                    const msg = sendToGroup ? 
-                        `<strong>✓ Message sent to ${count} group members!</strong> Messages queued and will be sent within 5 minutes.` :
-                        '<strong>✓ DM queued!</strong> It will be sent within 5 minutes.';
+                    const groupCount = selectedGroups.length;
+                    let msg;
+                    
+                    if (groupCount > 0 && recipient) {
+                        msg = `<strong>✓ Message sent to 1 user and ${count} members across ${groupCount} group(s)!</strong> Messages queued and will be sent within 5 minutes.`;
+                    } else if (groupCount > 0) {
+                        msg = `<strong>✓ Message sent to ${count} members across ${groupCount} group(s)!</strong> Messages queued and will be sent within 5 minutes.`;
+                    } else {
+                        msg = '<strong>✓ DM queued!</strong> It will be sent within 5 minutes.';
+                    }
+                    
                     status.innerHTML = `<div class="notice notice-success"><p>${msg}</p></div>`;
                     clearComposeForm();
                 } else {
@@ -858,6 +882,9 @@ class Nostr_Login_Pay_DM_Admin {
             document.getElementById('dm-subject').value = '';
             document.getElementById('dm-message').value = '';
             document.getElementById('dm-custom-recipient').style.display = 'none';
+            
+            // Uncheck all group checkboxes
+            document.querySelectorAll('.group-checkbox').forEach(cb => cb.checked = false);
         }
         </script>
         <?php
@@ -867,79 +894,217 @@ class Nostr_Login_Pay_DM_Admin {
      * Render Group Chat tab
      */
     public function render_groupchat_tab() {
-        // Handle form submission
-        if ( isset( $_POST['save_group_chat'] ) && check_admin_referer( 'nostr_group_chat_settings' ) ) {
-            $enabled = isset( $_POST['group_chat_enabled'] ) ? '1' : '';
-            $group_members = isset( $_POST['group_members'] ) ? sanitize_textarea_field( $_POST['group_members'] ) : '';
-            
-            // Save toggleable message types
-            $message_types = array(
-                'woocommerce_orders' => isset( $_POST['msg_type_orders'] ) ? '1' : '',
-                'new_users' => isset( $_POST['msg_type_new_users'] ) ? '1' : '',
-                'password_reset' => isset( $_POST['msg_type_password_reset'] ) ? '1' : '',
-                'admin_notifications' => isset( $_POST['msg_type_admin'] ) ? '1' : '',
-                'comments' => isset( $_POST['msg_type_comments'] ) ? '1' : '',
-                'gig_notifications' => isset( $_POST['msg_type_gigs'] ) ? '1' : '',
-            );
-            
-            update_option( 'nostr_group_chat_enabled', $enabled );
-            update_option( 'nostr_group_chat_members', $group_members );
-            update_option( 'nostr_group_chat_message_types', $message_types );
-            
-            echo '<div class="notice notice-success"><p>✓ Group chat settings saved!</p></div>';
+        // Handle delete group
+        if ( isset( $_GET['delete_group'] ) && check_admin_referer( 'delete_group_' . $_GET['delete_group'] ) ) {
+            $groups = get_option( 'nostr_group_chats', array() );
+            $group_id = sanitize_text_field( $_GET['delete_group'] );
+            if ( isset( $groups[$group_id] ) ) {
+                unset( $groups[$group_id] );
+                update_option( 'nostr_group_chats', $groups );
+                echo '<div class="notice notice-success"><p>✓ Group deleted!</p></div>';
+            }
         }
         
-        // Get current settings
-        $enabled = get_option( 'nostr_group_chat_enabled', '' );
-        $group_members = get_option( 'nostr_group_chat_members', '' );
-        $message_types = get_option( 'nostr_group_chat_message_types', array(
-            'woocommerce_orders' => '',
-            'new_users' => '1',
-            'password_reset' => '1',
-            'admin_notifications' => '1',
-            'comments' => '1',
-            'gig_notifications' => '1',
-        ) );
+        // Handle form submission (add/edit group)
+        if ( isset( $_POST['save_group_chat'] ) && check_admin_referer( 'nostr_group_chat_settings' ) ) {
+            $group_id = isset( $_POST['group_id'] ) ? sanitize_text_field( $_POST['group_id'] ) : '';
+            $is_new = empty( $group_id );
+            
+            if ( $is_new ) {
+                $group_id = 'group_' . time() . '_' . rand( 1000, 9999 );
+            }
+            
+            $group_data = array(
+                'id' => $group_id,
+                'name' => isset( $_POST['group_name'] ) ? sanitize_text_field( $_POST['group_name'] ) : 'Unnamed Group',
+                'enabled' => isset( $_POST['group_enabled'] ) ? '1' : '',
+                'members' => isset( $_POST['group_members'] ) ? sanitize_textarea_field( $_POST['group_members'] ) : '',
+                'message_types' => array(
+                    'woocommerce_orders' => isset( $_POST['msg_type_orders'] ) ? '1' : '',
+                    'new_users' => isset( $_POST['msg_type_new_users'] ) ? '1' : '',
+                    'password_reset' => isset( $_POST['msg_type_password_reset'] ) ? '1' : '',
+                    'admin_notifications' => isset( $_POST['msg_type_admin'] ) ? '1' : '',
+                    'comments' => isset( $_POST['msg_type_comments'] ) ? '1' : '',
+                    'gig_notifications' => isset( $_POST['msg_type_gigs'] ) ? '1' : '',
+                ),
+            );
+            
+            // Get existing groups
+            $groups = get_option( 'nostr_group_chats', array() );
+            $groups[$group_id] = $group_data;
+            update_option( 'nostr_group_chats', $groups );
+            
+            echo '<div class="notice notice-success"><p>✓ Group ' . ( $is_new ? 'created' : 'updated' ) . '!</p></div>';
+        }
+        
+        // Get all groups
+        $groups = get_option( 'nostr_group_chats', array() );
+        
+        // Check if editing a specific group
+        $editing_group = null;
+        if ( isset( $_GET['edit_group'] ) ) {
+            $edit_id = sanitize_text_field( $_GET['edit_group'] );
+            if ( isset( $groups[$edit_id] ) ) {
+                $editing_group = $groups[$edit_id];
+            }
+        }
         
         ?>
-        <div style="max-width: 900px; margin-top: 20px;">
-            <h2>👥 <?php _e( 'Group Chat Settings', 'nostr-outbox-wordpress' ); ?></h2>
-            
-            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0;">📱 About Group Chat</h3>
-                <p style="margin: 0 0 10px 0;">
-                    Send copies of all site notifications to a group of Nostr users. Perfect for keeping your team informed about:
-                </p>
-                <ul style="margin: 5px 0 0 20px;">
-                    <li>New user registrations</li>
-                    <li>WooCommerce orders (optional)</li>
-                    <li>Password reset requests</li>
-                    <li>Admin notifications</li>
-                    <li>New comments</li>
-                </ul>
+        <div style="max-width: 1000px; margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">👥 <?php _e( 'Group Chats', 'nostr-outbox-wordpress' ); ?></h2>
+                <?php if ( ! $editing_group && ! isset( $_GET['add_group'] ) ) : ?>
+                    <a href="?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat&add_group=1" class="button button-primary">
+                        ➕ <?php _e( 'Add New Group', 'nostr-outbox-wordpress' ); ?>
+                    </a>
+                <?php endif; ?>
             </div>
             
-            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0;">🔐 Privacy Note: Currently Using NIP-04</h3>
-                <p style="margin: 0;">
-                    Messages are currently sent using <strong>NIP-04 encryption</strong>. While content is encrypted, 
-                    some metadata (like sender/recipient) is visible. We plan to upgrade to <strong>Gift-Wrapped DMs (NIP-17)</strong> 
-                    in a future update for enhanced privacy with NIP-44 encryption.
-                </p>
-            </div>
+            <?php if ( ! $editing_group && ! isset( $_GET['add_group'] ) ) : ?>
+                <!-- List of Groups -->
+                <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">📱 About Group Chats</h3>
+                    <p style="margin: 0;">
+                        Create multiple groups for different purposes. Each group can have its own members and receive specific types of notifications. 
+                        <strong>Example:</strong> Create a "Workers" group for gig notifications, and an "Admins" group for all admin alerts.
+                    </p>
+                </div>
+                
+                <?php if ( empty( $groups ) ) : ?>
+                    <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 20px; text-align: center;">
+                        <p style="margin: 0; font-size: 16px;">
+                            <?php _e( 'No groups created yet. Click "Add New Group" above to get started!', 'nostr-outbox-wordpress' ); ?>
+                        </p>
+                    </div>
+                <?php else : ?>
+                    <div class="groups-list">
+                        <?php foreach ( $groups as $group ) : ?>
+                            <?php
+                            $members = array_filter( explode( "\n", $group['members'] ) );
+                            $member_count = count( $members );
+                            $is_enabled = $group['enabled'] === '1';
+                            $enabled_types = array_filter( $group['message_types'] );
+                            ?>
+                            <div style="background: white; border: 2px solid <?php echo $is_enabled ? '#22c55e' : '#d1d5db'; ?>; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div style="flex: 1;">
+                                        <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
+                                            <?php if ( $is_enabled ) : ?>
+                                                <span style="color: #22c55e;">✅</span>
+                                            <?php else : ?>
+                                                <span style="color: #9ca3af;">⭕</span>
+                                            <?php endif; ?>
+                                            <?php echo esc_html( $group['name'] ); ?>
+                                            <?php if ( ! $is_enabled ) : ?>
+                                                <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">DISABLED</span>
+                                            <?php endif; ?>
+                                        </h3>
+                                        
+                                        <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                                            <div>
+                                                <strong>👥 Members:</strong> <?php echo $member_count; ?>
+                                            </div>
+                                            <div>
+                                                <strong>📋 Message Types:</strong> <?php echo count( $enabled_types ); ?> active
+                                            </div>
+                                        </div>
+                                        
+                                        <?php if ( ! empty( $enabled_types ) ) : ?>
+                                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+                                                <?php
+                                                $type_labels = array(
+                                                    'woocommerce_orders' => '🛒 Orders',
+                                                    'new_users' => '👤 New Users',
+                                                    'password_reset' => '🔑 Passwords',
+                                                    'admin_notifications' => '⚙️ Admin',
+                                                    'comments' => '💬 Comments',
+                                                    'gig_notifications' => '📋 Gigs',
+                                                );
+                                                foreach ( $enabled_types as $type => $val ) :
+                                                    if ( isset( $type_labels[$type] ) ) :
+                                                ?>
+                                                    <span style="background: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 12px; font-size: 12px;">
+                                                        <?php echo esc_html( $type_labels[$type] ); ?>
+                                                    </span>
+                                                <?php endif; endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 8px;">
+                                        <a href="?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat&edit_group=<?php echo esc_attr( $group['id'] ); ?>" class="button">
+                                            ✏️ <?php _e( 'Edit', 'nostr-outbox-wordpress' ); ?>
+                                        </a>
+                                        <a href="<?php echo wp_nonce_url( '?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat&delete_group=' . urlencode( $group['id'] ), 'delete_group_' . $group['id'] ); ?>" 
+                                           class="button" 
+                                           onclick="return confirm('Delete this group? This cannot be undone.');"
+                                           style="color: #dc2626;">
+                                            🗑️ <?php _e( 'Delete', 'nostr-outbox-wordpress' ); ?>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+                
+            <?php else : ?>
+                <!-- Add/Edit Group Form -->
+                <?php
+                // Set defaults for new group
+                if ( ! $editing_group ) {
+                    $editing_group = array(
+                        'id' => '',
+                        'name' => '',
+                        'enabled' => '1',
+                        'members' => '',
+                        'message_types' => array(
+                            'woocommerce_orders' => '',
+                            'new_users' => '1',
+                            'password_reset' => '1',
+                            'admin_notifications' => '1',
+                            'comments' => '1',
+                            'gig_notifications' => '1',
+                        ),
+                    );
+                }
+                ?>
+                
+                <div style="margin-bottom: 20px;">
+                    <a href="?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat" class="button">
+                        ← <?php _e( 'Back to Groups List', 'nostr-outbox-wordpress' ); ?>
+                    </a>
+                </div>
+                
+                <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">
+                        <?php echo empty( $editing_group['id'] ) ? '➕ New Group' : '✏️ Edit Group: ' . esc_html( $editing_group['name'] ); ?>
+                    </h3>
+                </div>
             
-            <form method="post" action="">
+            <form method="post" action="?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat">
                 <?php wp_nonce_field( 'nostr_group_chat_settings' ); ?>
+                <input type="hidden" name="group_id" value="<?php echo esc_attr( $editing_group['id'] ); ?>">
                 
                 <table class="form-table">
                     <tr>
                         <th scope="row">
-                            <label for="group_chat_enabled"><?php _e( 'Enable Group Chat', 'nostr-outbox-wordpress' ); ?></label>
+                            <label for="group_name"><?php _e( 'Group Name', 'nostr-outbox-wordpress' ); ?> *</label>
+                        </th>
+                        <td>
+                            <input type="text" name="group_name" id="group_name" value="<?php echo esc_attr( $editing_group['name'] ); ?>" class="regular-text" required>
+                            <p class="description"><?php _e( 'e.g., "Workers", "Admin Team", "VIP Customers"', 'nostr-outbox-wordpress' ); ?></p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">
+                            <label for="group_enabled"><?php _e( 'Enable Group', 'nostr-outbox-wordpress' ); ?></label>
                         </th>
                         <td>
                             <label>
-                                <input type="checkbox" name="group_chat_enabled" id="group_chat_enabled" value="1" <?php checked( $enabled, '1' ); ?>>
-                                <?php _e( 'Send notifications to group members', 'nostr-outbox-wordpress' ); ?>
+                                <input type="checkbox" name="group_enabled" id="group_enabled" value="1" <?php checked( $editing_group['enabled'], '1' ); ?>>
+                                <?php _e( 'Send notifications to this group', 'nostr-outbox-wordpress' ); ?>
                             </label>
                         </td>
                     </tr>
@@ -957,7 +1122,7 @@ class Nostr_Login_Pay_DM_Admin {
                             ) );
                             
                             // Parse existing members and get their labels
-                            $existing_members = array_filter( array_map( 'trim', explode( "\n", $group_members ) ) );
+                            $existing_members = array_filter( array_map( 'trim', explode( "\n", $editing_group['members'] ) ) );
                             
                             // Create a map of pubkey => username for site users
                             $pubkey_to_username = array();
@@ -1055,7 +1220,7 @@ class Nostr_Login_Pay_DM_Admin {
                                 id="group_members" 
                                 rows="4" 
                                 style="display: none;"
-                            ><?php echo esc_textarea( $group_members ); ?></textarea>
+                            ><?php echo esc_textarea( $editing_group['members'] ); ?></textarea>
                             
                             <p class="description">
                                 <?php _e( 'Add site users with Nostr accounts or enter custom npub/hex pubkeys for external users.', 'nostr-outbox-wordpress' ); ?>
@@ -1159,37 +1324,37 @@ class Nostr_Login_Pay_DM_Admin {
                             </p>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_orders" value="1" <?php checked( $message_types['woocommerce_orders'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_orders" value="1" <?php checked( $editing_group['message_types']['woocommerce_orders'], '1' ); ?>>
                                 <strong>🛒 WooCommerce Orders</strong>
                                 <span style="color: #666;">- New orders, order status changes</span>
                             </label>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_new_users" value="1" <?php checked( $message_types['new_users'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_new_users" value="1" <?php checked( $editing_group['message_types']['new_users'], '1' ); ?>>
                                 <strong>👤 New User Registrations</strong>
                                 <span style="color: #666;">- When users create accounts</span>
                             </label>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_password_reset" value="1" <?php checked( $message_types['password_reset'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_password_reset" value="1" <?php checked( $editing_group['message_types']['password_reset'], '1' ); ?>>
                                 <strong>🔑 Password Resets</strong>
                                 <span style="color: #666;">- Password reset requests</span>
                             </label>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_admin" value="1" <?php checked( $message_types['admin_notifications'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_admin" value="1" <?php checked( $editing_group['message_types']['admin_notifications'], '1' ); ?>>
                                 <strong>⚙️ Admin Notifications</strong>
                                 <span style="color: #666;">- System updates, plugin notifications</span>
                             </label>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_comments" value="1" <?php checked( $message_types['comments'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_comments" value="1" <?php checked( $editing_group['message_types']['comments'], '1' ); ?>>
                                 <strong>💬 Comments & Reviews</strong>
                                 <span style="color: #666;">- New comments and product reviews</span>
                             </label>
                             
                             <label style="display: block; margin-bottom: 10px;">
-                                <input type="checkbox" name="msg_type_gigs" value="1" <?php checked( $message_types['gig_notifications'], '1' ); ?>>
+                                <input type="checkbox" name="msg_type_gigs" value="1" <?php checked( $editing_group['message_types']['gig_notifications'], '1' ); ?>>
                                 <strong>📋 Gig Notifications</strong>
                                 <span style="color: #666;">- New gigs, claims, assignments, reminders, cancellations</span>
                             </label>
@@ -1199,30 +1364,14 @@ class Nostr_Login_Pay_DM_Admin {
                 
                 <p class="submit">
                     <button type="submit" name="save_group_chat" class="button button-primary">
-                        💾 <?php _e( 'Save Settings', 'nostr-outbox-wordpress' ); ?>
+                        💾 <?php _e( 'Save Group', 'nostr-outbox-wordpress' ); ?>
                     </button>
+                    <a href="?page=nostr-outbox-wordpress&tab=dm&dmtab=groupchat" class="button" style="margin-left: 10px;">
+                        ❌ <?php _e( 'Cancel', 'nostr-outbox-wordpress' ); ?>
+                    </a>
                 </p>
             </form>
-            
-            <?php if ( $enabled === '1' && ! empty( $group_members ) ) : ?>
-                <div style="background: #f0fdf4; border: 1px solid #22c55e; border-radius: 6px; padding: 15px; margin-top: 20px;">
-                    <h3 style="margin-top: 0; color: #15803d;">✅ Group Chat Active</h3>
-                    <p style="margin: 0;">
-                        Notifications are being sent to <strong><?php echo count( array_filter( explode( "\n", $group_members ) ) ); ?> group members</strong>.
-                    </p>
-                </div>
-            <?php else : ?>
-                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 15px; margin-top: 20px;">
-                    <h3 style="margin-top: 0; color: #92400e;">⚠️ Group Chat Inactive</h3>
-                    <p style="margin: 0;">
-                        <?php if ( empty( $group_members ) ) : ?>
-                            Please add group members above to activate group notifications.
-                        <?php else : ?>
-                            Enable group chat above to start sending notifications to your team.
-                        <?php endif; ?>
-                    </p>
-                </div>
-            <?php endif; ?>
+            <?php endif; // end editing form ?>
         </div>
         <?php
     }
@@ -1521,21 +1670,17 @@ class Nostr_Login_Pay_DM_Admin {
         $recipient = isset( $_POST['recipient'] ) ? sanitize_text_field( $_POST['recipient'] ) : '';
         $subject = isset( $_POST['subject'] ) ? sanitize_text_field( $_POST['subject'] ) : '';
         $message = isset( $_POST['message'] ) ? sanitize_textarea_field( $_POST['message'] ) : '';
-        $send_to_group = isset( $_POST['send_to_group'] ) && $_POST['send_to_group'] === '1';
+        $selected_groups = isset( $_POST['selected_groups'] ) ? sanitize_text_field( $_POST['selected_groups'] ) : '';
 
-        // Check if sending to group
-        if ( $send_to_group ) {
-            // Get group members
-            $group_members = get_option( 'nostr_group_chat_members', '' );
-            if ( empty( $group_members ) ) {
-                wp_send_json_error( array( 'message' => __( 'No group members configured', 'nostr-outbox-wordpress' ) ) );
-            }
+        // Check if sending to groups
+        $group_ids = array_filter( explode( ',', $selected_groups ) );
+        if ( ! empty( $group_ids ) ) {
+            // Get all groups
+            $all_groups = get_option( 'nostr_group_chats', array() );
             
             // Get notification instance to use npub conversion
             $notifications = Nostr_Login_Pay_Notifications::instance();
             
-            // Parse members
-            $members = array_filter( array_map( 'trim', explode( "\n", $group_members ) ) );
             $dm_queue = get_option( 'nostr_dm_queue', array() );
             if ( ! is_array( $dm_queue ) ) {
                 $dm_queue = array();
@@ -1544,51 +1689,78 @@ class Nostr_Login_Pay_DM_Admin {
             $full_message = $subject ? "**{$subject}**\n\n{$message}" : $message;
             $queued_count = 0;
             
-            foreach ( $members as $member ) {
-                // Convert npub to hex if needed (use reflection to access private method)
-                $pubkey_hex = $member;
-                if ( strpos( $member, 'npub1' ) === 0 ) {
-                    $reflection = new ReflectionClass( $notifications );
-                    $method = $reflection->getMethod( 'npub_to_hex' );
-                    $method->setAccessible( true );
-                    $converted = $method->invoke( $notifications, $member );
-                    if ( $converted ) {
-                        $pubkey_hex = $converted;
-                    } else {
-                        error_log( 'Manual DM to Group: Failed to convert npub: ' . $member );
-                        continue;
-                    }
-                }
-                
-                // Validate hex format
-                if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
-                    error_log( 'Manual DM to Group: Invalid pubkey format: ' . $member );
+            // Process each selected group
+            foreach ( $group_ids as $group_id ) {
+                if ( ! isset( $all_groups[$group_id] ) ) {
                     continue;
                 }
                 
-                $new_dm = array(
-                    'id' => uniqid( 'dm_', true ),
-                    'recipient' => $pubkey_hex,
-                    'message' => $full_message,
-                    'subject' => $subject ? $subject : 'Manual Group DM',
-                    'username' => 'Group (Manual)',
-                    'timestamp' => time(),
-                );
+                $group = $all_groups[$group_id];
                 
-                $dm_queue[] = $new_dm;
-                $queued_count++;
+                // Skip if group is disabled or has no members
+                if ( empty( $group['enabled'] ) || $group['enabled'] !== '1' || empty( $group['members'] ) ) {
+                    continue;
+                }
+                
+                // Parse members
+                $members = array_filter( array_map( 'trim', explode( "\n", $group['members'] ) ) );
+                
+                foreach ( $members as $member ) {
+                    // Convert npub to hex if needed (use reflection to access private method)
+                    $pubkey_hex = $member;
+                    if ( strpos( $member, 'npub1' ) === 0 ) {
+                        $reflection = new ReflectionClass( $notifications );
+                        $method = $reflection->getMethod( 'npub_to_hex' );
+                        $method->setAccessible( true );
+                        $converted = $method->invoke( $notifications, $member );
+                        if ( $converted ) {
+                            $pubkey_hex = $converted;
+                        } else {
+                            error_log( 'Manual DM to Group [' . $group['name'] . ']: Failed to convert npub: ' . $member );
+                            continue;
+                        }
+                    }
+                    
+                    // Validate hex format
+                    if ( ! preg_match( '/^[0-9a-f]{64}$/i', $pubkey_hex ) ) {
+                        error_log( 'Manual DM to Group [' . $group['name'] . ']: Invalid pubkey format: ' . $member );
+                        continue;
+                    }
+                    
+                    $new_dm = array(
+                        'id' => uniqid( 'dm_', true ),
+                        'recipient' => $pubkey_hex,
+                        'message' => "[{$group['name']}] " . $full_message,
+                        'subject' => $subject ? "[{$group['name']}] {$subject}" : "[{$group['name']}] Manual DM",
+                        'username' => 'Group: ' . $group['name'],
+                        'timestamp' => time(),
+                    );
+                    
+                    $dm_queue[] = $new_dm;
+                    $queued_count++;
+                }
             }
             
-            // Save queue
-            delete_option( 'nostr_dm_queue' );
-            add_option( 'nostr_dm_queue', $dm_queue, '', 'no' );
+            // Save queue if we queued to groups
+            if ( $queued_count > 0 ) {
+                delete_option( 'nostr_dm_queue' );
+                add_option( 'nostr_dm_queue', $dm_queue, '', 'no' );
+                error_log( 'Manual DM to Groups: Queued ' . $queued_count . ' messages across ' . count( $group_ids ) . ' groups' );
+            }
             
-            error_log( 'Manual DM to Group: Queued ' . $queued_count . ' messages' );
+            // If no individual recipient, return group result
+            if ( empty( $recipient ) ) {
+                if ( $queued_count === 0 ) {
+                    wp_send_json_error( array( 'message' => __( 'No valid group members found', 'nostr-outbox-wordpress' ) ) );
+                }
+                
+                wp_send_json_success( array(
+                    'message' => sprintf( __( '%d messages queued to %d group(s)', 'nostr-outbox-wordpress' ), $queued_count, count( $group_ids ) ),
+                    'count' => $queued_count,
+                ) );
+            }
             
-            wp_send_json_success( array(
-                'message' => sprintf( __( '%d messages queued to group', 'nostr-outbox-wordpress' ), $queued_count ),
-                'count' => $queued_count,
-            ) );
+            // If there's also an individual recipient, continue to process it below
         }
 
         // Single recipient mode
@@ -1675,6 +1847,9 @@ class Nostr_Login_Pay_DM_Admin {
 
         // Get sent messages log
         $sent_messages = get_option( 'nostr_dm_sent_log', array() );
+        
+        // Reverse order so newest messages appear at the top
+        $sent_messages = array_reverse( $sent_messages );
 
         wp_send_json_success( array(
             'messages' => $sent_messages,
