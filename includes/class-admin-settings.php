@@ -1,64 +1,18 @@
 <?php
 /**
- * Plugin Name: NOW - Nostr Outbox for WordPress
- * Plugin URI: https://github.com/mnpezz/nostr-outboxfor-wordpress
- * Description: Send WordPress and WooCommerce notifications via Nostr instead of email. Includes Lightning payments, Nostr login, NIP-05 verification, and encrypted direct messaging.
- * Version: 1.1.0
- * Author: mnpezz
- * License: GPL v2 or later
- * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: nostr-outbox-wordpress
- * Domain Path: /languages
- * Requires at least: 5.8
- * Requires PHP: 7.4
- * WC requires at least: 6.0
- * WC tested up to: 8.5
+ * Admin Settings Page
+ *
+ * @package Nostr_Login_Pay
  */
 
- // If this file is called directly, abort.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
-// Define plugin constants
-define( 'NOW_VERSION', '1.1.0' );
-define( 'NOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'NOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'NOW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
-
-// Legacy constants for backward compatibility
-define( 'NOSTR_LOGIN_PAY_VERSION', '1.1.0' );
-define( 'NOSTR_LOGIN_PAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'NOSTR_LOGIN_PAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'NOSTR_LOGIN_PAY_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
-
-// Load Composer autoloader (for PHP crypto libraries)
-if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
-	require_once __DIR__ . '/vendor/autoload.php';
-	define( 'NOSTR_LOGIN_PAY_HAS_COMPOSER', true );
-} else {
-	define( 'NOSTR_LOGIN_PAY_HAS_COMPOSER', false );
-	// Show admin notice if crypto dependencies are missing
-	add_action( 'admin_notices', function() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-		?>
-		<div class="notice notice-warning">
-			<p>
-				<strong>Nostr Login & Pay:</strong> Composer dependencies not found. 
-				Automatic DM sending will not work until you run <code>composer install</code> in the plugin directory.
-				Manual DM sending (browser-based) will continue to work.
-			</p>
-		</div>
-		<?php
-	} );
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
 }
 
 /**
- * Main plugin class
+ * Handles admin settings page
  */
-class Nostr_Login_And_Pay {
+class Nostr_Login_Pay_Admin_Settings {
 
     /**
      * The single instance of the class
@@ -79,640 +33,942 @@ class Nostr_Login_And_Pay {
      * Constructor
      */
     private function __construct() {
-        $this->init();
-    }
-
-    /**
-     * Initialize the plugin
-     */
-    private function init() {
-        // Load plugin text domain
-        add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
-
-        // Include required files
-        $this->includes();
-
-        // Initialize components
-        add_action( 'plugins_loaded', array( $this, 'init_components' ) );
-
-        // Enqueue scripts and styles
-        add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
-        add_action( 'login_enqueue_scripts', array( $this, 'enqueue_login_assets' ) );
-        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
-
-        // Add login buttons to WooCommerce pages
-        add_action( 'woocommerce_before_customer_login_form', array( $this, 'add_nostr_login_button_before_form' ) );
+        add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
+        add_action( 'admin_init', array( $this, 'register_settings' ) );
         
-        // Add login button to WordPress login page - use higher priority to appear at top
-        add_action( 'login_form', array( $this, 'add_nostr_login_button_wp_login' ), 5 );
+        // Manually handle settings save to fix checkbox issues
+        add_action( 'admin_init', array( $this, 'manual_save_settings' ), 999 );
+    }
+
+    /**
+     * Sanitize relay URLs
+     */
+    public function sanitize_relays( $value ) {
+        // Debug log
+        error_log( 'Sanitize relays called with: ' . print_r( $value, true ) );
         
-        // Register AJAX handlers
-        add_action( 'wp_ajax_nostr_verify_login', array( $this, 'ajax_verify_nostr_login' ) );
-        add_action( 'wp_ajax_nostr_verify_nwc', array( $this, 'ajax_verify_nwc' ) );
-        add_action( 'wp_ajax_nopriv_nostr_verify_login', array( $this, 'ajax_verify_nostr_login' ) ); // nopriv for non-logged users
-        add_action( 'wp_ajax_nopriv_nostr_verify_nwc', array( $this, 'ajax_verify_nwc' ) );
-
-        // Declare WooCommerce HPOS compatibility
-        add_action( 'before_woocommerce_init', array( $this, 'declare_wc_compatibility' ) );
-    }
-
-    /**
-     * Load plugin textdomain
-     */
-    public function load_textdomain() {
-        load_plugin_textdomain( 'nostr-outbox-wordpress', false, dirname( NOSTR_LOGIN_PAY_PLUGIN_BASENAME ) . '/languages' );
-    }
-
-    /**
-     * Include required files
-     */
-    private function includes() {
-        $includes = array(
-            'includes/class-nostr-auth.php',
-            'includes/class-nwc-wallet.php',
-            'includes/class-lnurl-service.php',
-            'includes/class-payment-webhook.php',
-            'includes/class-nwc-php-client.php',
-            'includes/class-admin-settings.php',
-            'includes/class-user-profile.php',
-            'includes/class-nip05-verification.php',
-            'includes/class-nostr-notifications.php',
-            'includes/class-nostr-profile-sync.php',
-            'includes/class-nostr-connect.php',
-            'includes/class-dm-admin.php',
-            'includes/class-nostr-crypto-php.php',
+        $default_relays = array(
+            'wss://relay.damus.io',
+            'wss://relay.snort.social',
+            'wss://nos.lol',
+            'wss://relay.nostr.band',
         );
+        
+        if ( empty( $value ) || ! is_array( $value ) ) {
+            error_log( 'Sanitize relays: value empty or not array, returning defaults' );
+            return $default_relays;
+        }
 
-        foreach ( $includes as $file ) {
-            $filepath = NOSTR_LOGIN_PAY_PLUGIN_DIR . $file;
-            if ( file_exists( $filepath ) ) {
-                require_once $filepath;
+        // Process array
+        $relays = array();
+        foreach ( $value as $relay ) {
+            $relay = trim( $relay );
+            // Skip empty values and placeholders
+            if ( empty( $relay ) || $relay === 'wss://relay.example.com' ) {
+                continue;
+            }
+            // Validate wss:// or ws:// format
+            if ( strpos( $relay, 'wss://' ) === 0 || strpos( $relay, 'ws://' ) === 0 ) {
+                // Don't use esc_url_raw() - it strips wss:// URLs!
+                // Just sanitize as text and validate the URL structure
+                $sanitized = sanitize_text_field( $relay );
+                if ( filter_var( $sanitized, FILTER_VALIDATE_URL ) || preg_match( '/^wss?:\/\/.+/', $sanitized ) ) {
+                    $relays[] = $sanitized;
+                    error_log( "Sanitize relays: added relay: $sanitized" );
+                } else {
+                    error_log( "Sanitize relays: skipping invalid URL structure: $relay" );
+                }
+            } else {
+                // Log invalid relay
+                error_log( 'Sanitize relays: skipping invalid relay (not wss/ws): ' . $relay );
             }
         }
-
-        // WooCommerce gateway files are loaded separately in plugins_loaded hook
-        // See nostr_login_pay_load_gateway() function below
+        
+        // If NO valid relays, return defaults
+        // But if we have at least one valid relay, use those
+        if ( empty( $relays ) ) {
+            error_log( 'Sanitize relays: no valid relays, returning defaults' );
+            return $default_relays;
+        }
+        
+        error_log( 'Sanitize relays: returning ' . count( $relays ) . ' valid relays: ' . print_r( $relays, true ) );
+        return $relays;
     }
 
     /**
-     * Initialize components
+     * Manually save settings to handle checkboxes properly
      */
-    public function init_components() {
-        // Initialize admin settings
-        if ( is_admin() && class_exists( 'Nostr_Login_Pay_Admin_Settings' ) ) {
-            Nostr_Login_Pay_Admin_Settings::instance();
+    public function manual_save_settings() {
+        // Handle clear BTC price cache action
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'clear_btc_cache' && isset( $_GET['_wpnonce'] ) ) {
+            if ( wp_verify_nonce( $_GET['_wpnonce'], 'clear_btc_cache' ) && current_user_can( 'manage_options' ) ) {
+                // Clear all BTC price caches
+                global $wpdb;
+                $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_nwc_btc_price_%'" );
+                $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_nwc_btc_price_%'" );
+                
+                wp_redirect( add_query_arg( array(
+                    'page' => 'nostr-outbox-wordpress',
+                    'tab' => 'nwc',
+                    'btc_cache_cleared' => '1'
+                ), admin_url( 'options-general.php' ) ) );
+                exit;
+            }
+        }
+        
+        // Only run when saving our settings
+        if ( ! isset( $_POST['option_page'] ) ) {
+            return;
         }
 
-        // Relay settings integrated into main settings (removed separate class)
+        $option_page = $_POST['option_page'];
 
-        // Initialize user profile fields
-        if ( class_exists( 'Nostr_Login_Pay_User_Profile' ) ) {
-            Nostr_Login_Pay_User_Profile::instance();
+        if ( $option_page !== 'nostr_login_pay_general' && $option_page !== 'nostr_login_pay_nwc' ) {
+            return;
         }
 
-        // Initialize NIP-05 verification
-        if ( class_exists( 'Nostr_Login_Pay_NIP05' ) ) {
-            Nostr_Login_Pay_NIP05::instance();
+        // Verify nonce
+        if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'nostr_login_pay_general-options' ) && ! wp_verify_nonce( $_POST['_wpnonce'], 'nostr_login_pay_nwc-options' ) ) {
+            return;
         }
 
-        // Initialize Nostr notifications
-        if ( class_exists( 'Nostr_Login_Pay_Notifications' ) ) {
-            Nostr_Login_Pay_Notifications::instance();
-        }
+        // Define which checkboxes belong to which option page
+        $checkboxes_by_page = array(
+            'nostr_login_pay_general' => array(
+                'nostr_login_pay_enable_login',
+                'nostr_login_pay_enable_nwc',
+                'nostr_login_pay_auto_create_account',
+            ),
+            'nostr_login_pay_nwc' => array(
+                'nostr_login_pay_nwc_enable_payment_gateway',
+            ),
+        );
 
-        // Initialize profile sync
-        if ( class_exists( 'Nostr_Login_Pay_Profile_Sync' ) ) {
-            Nostr_Login_Pay_Profile_Sync::instance();
-        }
-
-        // Initialize Nostr connect
-        if ( class_exists( 'Nostr_Login_Pay_Connect' ) ) {
-            Nostr_Login_Pay_Connect::instance();
-        }
-
-        // Initialize DM Admin
-        if ( class_exists( 'Nostr_Login_Pay_DM_Admin' ) ) {
-            Nostr_Login_Pay_DM_Admin::instance();
+        // Only process checkboxes for the current option page
+        if ( isset( $checkboxes_by_page[ $option_page ] ) ) {
+            foreach ( $checkboxes_by_page[ $option_page ] as $checkbox ) {
+                // If checkbox exists in POST (checked), set to '1', otherwise set to ''
+                $value = isset( $_POST[ $checkbox ] ) ? '1' : '';
+                update_option( $checkbox, $value );
+            }
         }
     }
 
     /**
-     * Enqueue frontend assets
+     * Initialize default option values if they don't exist
      */
-    public function enqueue_frontend_assets() {
-        // Load nostr-tools FIRST (Alby SDK needs it!)
-        // Using 1.17.0 - last v1.x version with bundle (compatible with Alby SDK)
-        wp_enqueue_script(
-            'nostr-tools',
-            'https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js',
-            array(),
-            '1.17.0',
-            false // Load in head so it's ready for Alby SDK
+    private function maybe_initialize_defaults() {
+        $defaults = array(
+            'nostr_login_pay_enable_login' => '1',
+            'nostr_login_pay_enable_nwc' => '1',
+            'nostr_login_pay_auto_create_account' => '1',
+            'nostr_login_pay_nwc_enable_payment_gateway' => '1',
+            'nostr_login_pay_default_role' => 'customer',
+            'nostr_login_pay_relays' => "wss://relay.damus.io\nwss://relay.primal.net\nwss://nos.lol",
+            'nostr_login_pay_nwc_payment_timeout' => 300,
         );
+
+        foreach ( $defaults as $option_name => $default_value ) {
+            if ( get_option( $option_name ) === false ) {
+                add_option( $option_name, $default_value );
+            }
+        }
+    }
+
+
+    /**
+     * Sanitize NWC connection string
+     */
+    public function sanitize_nwc_connection( $value ) {
+        // Return empty if no value
+        if ( empty( $value ) ) {
+            return '';
+        }
         
-        // Enqueue Alby NWC SDK (depends on nostr-tools)
-        wp_enqueue_script(
-            'alby-nwc-sdk',
-            'https://cdn.jsdelivr.net/npm/@getalby/sdk@3.6.1/dist/index.umd.js',
-            array( 'nostr-tools' ), // Dependency!
-            '3.6.1',
-            false // Load in head
-        );
+        // Trim whitespace
+        $value = trim( $value );
         
-        // Add minimal compatibility shim - v1.x has native Alby SDK support!
-        wp_add_inline_script(
-            'alby-nwc-sdk',
-            "
-            // Expose nostr-tools v1.x for Alby SDK (already compatible!)
-            (function() {
-                if (typeof window.NostrTools !== 'undefined') {
-                    console.log('✅ nostr-tools v1.x loaded - native Alby SDK compatibility!');
-                    window.nostrTools = window.NostrTools; // Expose for SDK
-                    console.log('✅ Ready for NWC payments!');
-                }
-            })();
-            ",
-            'before'
-        );
-
-        // Enqueue main frontend script
-        wp_enqueue_script(
-            'nostr-outbox-wordpress-frontend',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/frontend.js',
-            array( 'jquery', 'nostr-tools' ),
-            NOSTR_LOGIN_PAY_VERSION,
-            true
-        );
-
-        // Localize script with AJAX URL and nonce
-        wp_localize_script(
-            'nostr-outbox-wordpress-frontend',
-            'nostrLoginPay',
-            array(
-                'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                'nonce' => wp_create_nonce( 'nostr-outbox-wordpress-nonce' ),
-                'siteUrl' => get_site_url(),
-                'siteName' => get_bloginfo( 'name' ),
-            )
-        );
-
-        // Enqueue frontend styles
-        wp_enqueue_style(
-            'nostr-outbox-wordpress-frontend',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/frontend.css',
-            array(),
-            NOSTR_LOGIN_PAY_VERSION
-        );
-
-        // Enqueue DM sender script (for admins only, to process queued DMs)
-        if ( current_user_can( 'manage_options' ) ) {
-            wp_enqueue_script(
-                'nostr-dm-sender',
-                NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/nostr-dm-sender.js',
-                array( 'nostr-tools' ),
-                NOSTR_LOGIN_PAY_VERSION,
-                true
+        // Fix common typo: "nostr walletconnect" should be "nostr+walletconnect"
+        if ( strpos( $value, 'nostr walletconnect://' ) === 0 ) {
+            $value = str_replace( 'nostr walletconnect://', 'nostr+walletconnect://', $value );
+            add_settings_error(
+                'nostr_login_pay_nwc_merchant_wallet',
+                'nwc_fixed',
+                __( 'Connection string was automatically corrected (added missing + sign).', 'nostr-outbox-wordpress' ),
+                'success'
             );
+        }
+        
+        // Decode URL encoding (Coinos provides URL-encoded strings like wss%3A%2F%2F)
+        // Check if it contains URL encoding before decoding
+        if ( strpos( $value, '%' ) !== false ) {
+            $value = urldecode( $value );
             
-            wp_localize_script(
-                'nostr-dm-sender',
-                'nostrDMData',
-                array(
-                    'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                    'nonce' => wp_create_nonce( 'nostr-dm-sender' ),
-                    'isAdmin' => '1',
-                )
+            // Show success message about decoding
+            add_settings_error(
+                'nostr_login_pay_nwc_merchant_wallet',
+                'nwc_decoded',
+                __( 'Connection string was automatically decoded from URL format.', 'nostr-outbox-wordpress' ),
+                'updated'
             );
         }
-    }
-
-    /**
-     * Enqueue assets for WordPress login page
-     */
-    public function enqueue_login_assets() {
-        // Load nostr-tools FIRST (Alby SDK needs it!)
-        // Using 1.17.0 - last v1.x version with bundle (compatible with Alby SDK)
-        wp_enqueue_script(
-            'nostr-tools',
-            'https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js',
-            array(),
-            '1.17.0',
-            false // Load in head
-        );
         
-        // Enqueue Alby NWC SDK (depends on nostr-tools)
-        wp_enqueue_script(
-            'alby-nwc-sdk',
-            'https://cdn.jsdelivr.net/npm/@getalby/sdk@3.6.1/dist/index.umd.js',
-            array( 'nostr-tools' ), // Dependency!
-            '3.6.1',
-            false // Load in head
-        );
-        
-        // Add minimal compatibility shim - v1.x has native Alby SDK support!
-        wp_add_inline_script(
-            'alby-nwc-sdk',
-            "
-            // Expose nostr-tools v1.x for Alby SDK (already compatible!)
-            (function() {
-                if (typeof window.NostrTools !== 'undefined') {
-                    console.log('✅ nostr-tools v1.x loaded - native Alby SDK compatibility!');
-                    window.nostrTools = window.NostrTools; // Expose for SDK
-                    console.log('✅ Ready for NWC payments!');
-                }
-            })();
-            ",
-            'before'
-        );
-
-        // Enqueue main frontend script
-        wp_enqueue_script(
-            'nostr-outbox-wordpress-frontend',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/frontend.js',
-            array( 'jquery', 'nostr-tools' ),
-            NOSTR_LOGIN_PAY_VERSION,
-            true
-        );
-
-        // Localize script
-        wp_localize_script(
-            'nostr-outbox-wordpress-frontend',
-            'nostrLoginPay',
-            array(
-                'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                'nonce' => wp_create_nonce( 'nostr-outbox-wordpress-nonce' ),
-                'siteUrl' => get_site_url(),
-                'siteName' => get_bloginfo( 'name' ),
-            )
-        );
-
-        // Enqueue styles
-        wp_enqueue_style(
-            'nostr-outbox-wordpress-frontend',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/frontend.css',
-            array(),
-            NOSTR_LOGIN_PAY_VERSION
-        );
-    }
-
-    /**
-     * Enqueue admin assets
-     */
-    public function enqueue_admin_assets( $hook ) {
-        // Load nostr-tools on admin pages for key generation
-        if ( strpos( $hook, 'nostr-outbox-wordpress' ) !== false || strpos( $hook, 'nostr-dms' ) !== false ) {
-            wp_enqueue_script(
-                'nostr-tools',
-                'https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js',
-                array(),
-                '1.17.0',
-                false
+        // Basic validation - check if it starts with the right prefix (case-insensitive)
+        $value_lower = strtolower( $value );
+        if ( strpos( $value_lower, 'nostr+walletconnect://' ) !== 0 && strpos( $value_lower, 'nostr+walletconnect://' ) === false ) {
+            // Debug: show what we actually got
+            $debug_prefix = substr( $value, 0, 50 );
+            $debug_length = strlen( $value );
+            add_settings_error(
+                'nostr_login_pay_nwc_merchant_wallet',
+                'invalid_nwc_format',
+                sprintf( 
+                    __( 'Invalid NWC format. Expected nostr+walletconnect://... but got (length %d): %s...', 'nostr-outbox-wordpress' ),
+                    $debug_length,
+                    esc_html( $debug_prefix )
+                ),
+                'error'
             );
-        }
-        // Only load on our settings page
-        if ( 'settings_page_nostr-outbox-wordpress' !== $hook ) {
-            return;
-        }
-
-        wp_enqueue_script(
-            'nostr-outbox-wordpress-admin',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/admin.js',
-            array( 'jquery' ),
-            NOSTR_LOGIN_PAY_VERSION,
-            true
-        );
-
-        wp_enqueue_style(
-            'nostr-outbox-wordpress-admin',
-            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/admin.css',
-            array(),
-            NOSTR_LOGIN_PAY_VERSION
-        );
-    }
-
-    /**
-     * Add Nostr login button to WooCommerce login form
-     */
-    public function add_nostr_login_button() {
-        echo '<div class="nostr-login-container">';
-        echo '<button type="button" class="nostr-login-button" id="nostr-login-btn">';
-        echo '<svg width="20" height="20" viewBox="0 0 875 875" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h875v875H0z"/><path d="M218.3 318.9c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V126.4c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#a)"/><path d="M218.3 556.1c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V363.6c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#b)"/><path d="M218.3 793.3c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V600.8c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#c)"/><defs><linearGradient id="a" x1="437.5" y1="96.7" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#8E2DE2"/><stop offset="1" stop-color="#4A00E0"/></linearGradient><linearGradient id="b" x1="437.5" y1="333.9" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#A259FF"/><stop offset="1" stop-color="#7B2CBF"/></linearGradient><linearGradient id="c" x1="437.5" y1="571.1" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#B583FF"/><stop offset="1" stop-color="#9D4EDD"/></linearGradient></defs></svg>';
-        echo '<span>' . esc_html__( 'Login with Nostr', 'nostr-outbox-wordpress' ) . '</span>';
-        echo '</button>';
-        echo '<div class="nostr-login-status"></div>';
-        echo '</div>';
-    }
-
-    /**
-     * Add Nostr login button before login form
-     */
-    public function add_nostr_login_button_before_form() {
-        // Check if Nostr login is enabled in settings
-        if ( ! get_option( 'nostr_login_pay_enable_login', '1' ) ) {
-            return;
+            // Still save it for debugging purposes
+            // return '';
         }
         
-        if ( ! is_user_logged_in() ) {
-            echo '<div class="nostr-login-wrapper">';
-            echo '<div class="nostr-login-container">';
-            echo '<button type="button" class="nostr-login-button" id="nostr-login-btn">';
-            echo '<svg width="20" height="20" viewBox="0 0 875 875" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h875v875H0z"/><path d="M218.3 318.9c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V126.4c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#a)"/><path d="M218.3 556.1c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V363.6c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#b)"/><path d="M218.3 793.3c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V600.8c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#c)"/><defs><linearGradient id="a" x1="437.5" y1="96.7" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#8E2DE2"/><stop offset="1" stop-color="#4A00E0"/></linearGradient><linearGradient id="b" x1="437.5" y1="333.9" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#A259FF"/><stop offset="1" stop-color="#7B2CBF"/></linearGradient><linearGradient id="c" x1="437.5" y1="571.1" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#B583FF"/><stop offset="1" stop-color="#9D4EDD"/></linearGradient></defs></svg>';
-            echo '<span>' . esc_html__( 'Login with Nostr', 'nostr-outbox-wordpress' ) . '</span>';
-            echo '</button>';
-            echo '<div class="nostr-login-status"></div>';
-            echo '</div>';
-            echo '<div class="nostr-login-divider"><span>' . esc_html__( 'or', 'nostr-outbox-wordpress' ) . '</span></div>';
-            echo '</div>';
+        // Check for required parameters
+        if ( strpos( $value, 'relay=' ) === false || strpos( $value, 'secret=' ) === false ) {
+            add_settings_error(
+                'nostr_login_pay_nwc_merchant_wallet',
+                'missing_params',
+                __( 'Connection string appears to be missing required parameters (relay or secret).', 'nostr-outbox-wordpress' ),
+                'error'
+            );
+            // Return empty if missing critical parameters
+            return '';
         }
+        
+        // All validation passed
+        add_settings_error(
+            'nostr_login_pay_nwc_merchant_wallet',
+            'nwc_saved',
+            __( '✓ NWC connection saved successfully!', 'nostr-outbox-wordpress' ),
+            'success'
+        );
+        
+        return $value;
     }
 
     /**
-     * Add Nostr login button to WordPress login page
+     * Add settings page to admin menu
      */
-    public function add_nostr_login_button_wp_login() {
-        // Check if Nostr login is enabled in settings
-        if ( ! get_option( 'nostr_login_pay_enable_login', '1' ) ) {
+    public function add_menu_page() {
+        add_options_page(
+            __( 'NOW - Nostr Outbox Settings', 'nostr-outbox-wordpress' ),
+            __( 'NOW - Nostr Outbox', 'nostr-outbox-wordpress' ),
+            'manage_options',
+            'nostr-outbox-wordpress',
+            array( $this, 'render_settings_page' )
+        );
+    }
+
+    /**
+     * Register plugin settings
+     */
+    public function register_settings() {
+        // General Settings - checkboxes handled manually
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_enable_login' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_enable_nwc' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_auto_create_account' );
+
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_default_role', array(
+            'type' => 'string',
+            'default' => 'customer',
+            'sanitize_callback' => 'sanitize_text_field',
+        ) );
+
+        // Relay Settings
+        register_setting( 'nostr_login_pay_relays', 'nostr_login_pay_relays', array(
+            'type' => 'array',
+            'sanitize_callback' => array( $this, 'sanitize_relays' ),
+            'default' => array(
+                'wss://relay.damus.io',
+                'wss://relay.snort.social',
+                'wss://nos.lol',
+                'wss://relay.nostr.band',
+            ),
+        ) );
+
+        register_setting( 'nostr_login_pay_relays', 'nostr_login_pay_redirect_after_login', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'account',
+        ) );
+
+        // NWC Settings - checkbox handled manually
+        register_setting( 'nostr_login_pay_nwc', 'nostr_login_pay_nwc_enable_payment_gateway' );
+
+        register_setting( 'nostr_login_pay_nwc', 'nostr_login_pay_lightning_address', array(
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => 'sanitize_text_field',
+        ) );
+
+        register_setting( 'nostr_login_pay_nwc', 'nostr_login_pay_nwc_merchant_wallet', array(
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => array( $this, 'sanitize_nwc_connection' ),
+        ) );
+
+        register_setting( 'nostr_login_pay_nwc', 'nostr_login_pay_nwc_payment_timeout', array(
+            'type' => 'integer',
+            'default' => 300,
+            'sanitize_callback' => 'absint',
+        ) );
+
+        // Add settings sections and fields
+        add_settings_section(
+            'nostr_login_pay_general_section',
+            __( 'General Settings', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_general_section' ),
+            'nostr-outbox-wordpress-general'
+        );
+
+        add_settings_field(
+            'nostr_login_pay_enable_login',
+            __( 'Enable Nostr Login', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_general_section',
+            array( 'name' => 'nostr_login_pay_enable_login', 'label' => __( 'Allow users to login with Nostr', 'nostr-outbox-wordpress' ) )
+        );
+
+        // HIDDEN: NWC Integration checkbox removed - customer wallet connections disabled
+        // This was for allowing customers to connect their own NWC wallets (not implemented)
+        // Payment gateway is controlled by the "Enable Payment Gateway" setting in NWC Settings tab
+        /*
+        add_settings_field(
+            'nostr_login_pay_enable_nwc',
+            __( 'Enable NWC Integration', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_general_section',
+            array( 'name' => 'nostr_login_pay_enable_nwc', 'label' => __( 'Allow users to connect NWC wallets', 'nostr-outbox-wordpress' ) )
+        );
+        */
+
+        add_settings_field(
+            'nostr_login_pay_auto_create_account',
+            __( 'Auto-create Accounts', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_general_section',
+            array( 'name' => 'nostr_login_pay_auto_create_account', 'label' => __( 'Automatically create WordPress accounts for new Nostr users', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_default_role',
+            __( 'Default User Role', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_role_select_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_general_section',
+            array( 'name' => 'nostr_login_pay_default_role' )
+        );
+
+        // HIDDEN: Nostr Relays field removed - not used by the plugin
+        // Default relays are hardcoded in the plugin and work fine for most users
+        // Advanced users can modify relays directly in code if needed
+        /*
+        add_settings_field(
+            'nostr_login_pay_relays',
+            __( 'Nostr Relays', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_textarea_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_general_section',
+            array( 'name' => 'nostr_login_pay_relays', 'description' => __( 'One relay URL per line', 'nostr-outbox-wordpress' ) )
+        );
+        */
+
+        // NWC Settings Section
+        add_settings_section(
+            'nostr_login_pay_nwc_section',
+            __( 'NWC Payment Settings', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_nwc_section' ),
+            'nostr-outbox-wordpress-nwc'
+        );
+
+        add_settings_field(
+            'nostr_login_pay_nwc_enable_payment_gateway',
+            __( 'Enable Payment Gateway', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-nwc',
+            'nostr_login_pay_nwc_section',
+            array( 'name' => 'nostr_login_pay_nwc_enable_payment_gateway', 'label' => __( 'Enable NWC as a WooCommerce payment method', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_lightning_address',
+            __( 'Lightning Address (Recommended)', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_lightning_address_field' ),
+            'nostr-outbox-wordpress-nwc',
+            'nostr_login_pay_nwc_section',
+            array( 'name' => 'nostr_login_pay_lightning_address' )
+        );
+
+        // NWC Connection field - REQUIRED for auto-verification!
+        add_settings_field(
+            'nostr_login_pay_nwc_merchant_wallet',
+            __( 'NWC Connection (For Auto-Verification)', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_nwc_connection_field' ),
+            'nostr-outbox-wordpress-nwc',
+            'nostr_login_pay_nwc_section',
+            array( 'name' => 'nostr_login_pay_nwc_merchant_wallet' )
+        );
+
+        // HIDDEN: Payment timeout and webhook fields not needed for current functionality
+        // Keeping code for future use if automatic verification is implemented
+        /*
+        add_settings_field(
+            'nostr_login_pay_nwc_payment_timeout',
+            __( 'Payment Timeout', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_number_field' ),
+            'nostr-outbox-wordpress-nwc',
+            'nostr_login_pay_nwc_section',
+            array( 'name' => 'nostr_login_pay_nwc_payment_timeout', 'description' => __( 'Seconds to wait for payment confirmation', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_webhook_url',
+            __( 'Webhook URL', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_webhook_url_field' ),
+            'nostr-outbox-wordpress-nwc',
+            'nostr_login_pay_nwc_section',
+            array()
+        );
+        */
+    }
+
+    /**
+     * Render settings page
+     */
+    public function render_settings_page() {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
+
+        // Initialize default values if they don't exist
+        $this->maybe_initialize_defaults();
+
+        $active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'general';
         
-        // Note: This hook fires INSIDE the form, so we need to break out with JavaScript
-        // or add via a different method. For now, we'll add it with inline styling.
+        // Show success message if BTC cache was cleared
+        if ( isset( $_GET['btc_cache_cleared'] ) ) {
+            ?>
+            <div class="notice notice-success is-dismissible">
+                <p><strong>✅ Bitcoin price cache cleared!</strong> The next order will fetch the current BTC price.</p>
+            </div>
+            <?php
+        }
         ?>
-        <script>
-        jQuery(document).ready(function($) {
-            // Move the Nostr button ABOVE the username field
-            var $loginForm = $('#loginform');
-            var $nostrButton = $('<div class="nostr-login-container" style="margin-bottom: 20px;">' +
-                '<button type="button" class="nostr-login-button" id="nostr-login-btn" style="width: 100%; max-width: none;">' +
-                '<svg width="20" height="20" viewBox="0 0 875 875" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h875v875H0z"/><path d="M218.3 318.9c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V126.4c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#a)"/><path d="M218.3 556.1c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V363.6c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#b)"/><path d="M218.3 793.3c34.6-27.3 84.1-51.5 148.5-51.5 129.6 0 172.9 64.3 261.5 64.3 62.7 0 101.7-19.1 124.2-34.6V600.8c-22.5 15.5-61.5 34.6-124.2 34.6-88.6 0-131.9-64.3-261.5-64.3-64.4 0-113.9 24.2-148.5 51.5v170.7z" fill="url(#c)"/><defs><linearGradient id="a" x1="437.5" y1="96.7" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#8E2DE2"/><stop offset="1" stop-color="#4A00E0"/></linearGradient><linearGradient id="b" x1="437.5" y1="333.9" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#A259FF"/><stop offset="1" stop-color="#7B2CBF"/></linearGradient><linearGradient id="c" x1="437.5" y1="571.1" x2="437.5" y2="875" gradientUnits="userSpaceOnUse"><stop stop-color="#B583FF"/><stop offset="1" stop-color="#9D4EDD"/></linearGradient></defs></svg>' +
-                '<span><?php esc_html_e( 'Login with Nostr', 'nostr-outbox-wordpress' ); ?></span>' +
-                '</button>' +
-                '<div class="nostr-login-status"></div>' +
-                '</div>' +
-                '<div class="nostr-login-divider" style="margin: 20px 0;"><span><?php esc_html_e( 'or', 'nostr-outbox-wordpress' ); ?></span></div>');
+        <div class="wrap">
+            <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+
+            <h2 class="nav-tab-wrapper">
+                <a href="?page=nostr-outbox-wordpress&tab=general" class="nav-tab <?php echo $active_tab === 'general' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e( 'General', 'nostr-outbox-wordpress' ); ?>
+                </a>
+                <a href="?page=nostr-outbox-wordpress&tab=nwc" class="nav-tab <?php echo $active_tab === 'nwc' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e( 'NWC Settings', 'nostr-outbox-wordpress' ); ?>
+                </a>
+                <a href="?page=nostr-outbox-wordpress&tab=relays" class="nav-tab <?php echo $active_tab === 'relays' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e( 'Relays', 'nostr-outbox-wordpress' ); ?>
+                </a>
+                <a href="?page=nostr-outbox-wordpress&tab=dm" class="nav-tab <?php echo $active_tab === 'dm' ? 'nav-tab-active' : ''; ?>">
+                    💬 <?php _e( 'DM Management', 'nostr-outbox-wordpress' ); ?>
+                </a>
+            </h2>
+
+            <?php if ( $active_tab === 'relays' ) : ?>
+                <?php $this->render_relays_tab(); ?>
+            <?php elseif ( $active_tab === 'dm' ) : ?>
+                <?php 
+                if ( class_exists( 'Nostr_Login_Pay_DM_Admin' ) ) {
+                    $dm_admin = Nostr_Login_Pay_DM_Admin::instance();
+                    // Render the full DM admin interface with sub-tabs
+                    $dm_admin->render_dm_tabs();
+                }
+                ?>
+            <?php else : ?>
+            <form action="options.php" method="post">
+                <?php
+                if ( $active_tab === 'general' ) {
+                    settings_fields( 'nostr_login_pay_general' );
+                    do_settings_sections( 'nostr-outbox-wordpress-general' );
+                } elseif ( $active_tab === 'nwc' ) {
+                    settings_fields( 'nostr_login_pay_nwc' );
+                    do_settings_sections( 'nostr-outbox-wordpress-nwc' );
+                }
+                submit_button( __( 'Save Settings', 'nostr-outbox-wordpress' ) );
+                ?>
+            </form>
+            <?php endif; ?>
             
-            $loginForm.prepend($nostrButton);
-        });
-        </script>
+            <?php if ( $active_tab === 'nwc' ) : ?>
+                <div style="margin-top: 20px; padding: 15px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <h3 style="margin-top: 0;">🔧 Advanced Tools</h3>
+                    <p style="margin: 5px 0 15px 0; color: #6b7280;">
+                        The plugin caches Bitcoin prices for 5 minutes to improve performance. 
+                        If you notice incorrect pricing, clear the cache to fetch fresh rates.
+                    </p>
+                    <a href="<?php echo wp_nonce_url( admin_url( 'options-general.php?page=nostr-outbox-wordpress&tab=nwc&action=clear_btc_cache' ), 'clear_btc_cache' ); ?>" 
+                       class="button button-secondary" 
+                       onclick="return confirm('Clear Bitcoin price cache and fetch fresh rates?');">
+                        🔄 Clear BTC Price Cache
+                    </a>
+                </div>
+            <?php endif; ?>
+        </div>
         <?php
     }
 
     /**
-     * AJAX handler for Nostr login verification
+     * Render general section description
      */
-    public function ajax_verify_nostr_login() {
-        check_ajax_referer( 'nostr-outbox-wordpress-nonce', 'nonce' );
-
-        if ( ! class_exists( 'Nostr_Login_Pay_Auth' ) ) {
-            wp_send_json_error( array( 'message' => __( 'Authentication handler not available', 'nostr-outbox-wordpress' ) ) );
-        }
-
-        $pubkey = isset( $_POST['pubkey'] ) ? trim( $_POST['pubkey'] ) : '';
-        $signature = isset( $_POST['signature'] ) ? sanitize_text_field( $_POST['signature'] ) : '';
-        $event = isset( $_POST['event'] ) ? json_decode( stripslashes( $_POST['event'] ), true ) : array();
-
-        if ( empty( $pubkey ) || empty( $signature ) || empty( $event ) ) {
-            wp_send_json_error( array( 'message' => __( 'Missing required data', 'nostr-outbox-wordpress' ) ) );
-        }
-        
-        // Normalize pubkey to lowercase and validate
-        $pubkey = strtolower( trim( $pubkey ) );
-        if ( strlen( $pubkey ) !== 64 || ! ctype_xdigit( $pubkey ) ) {
-            wp_send_json_error( array( 'message' => __( 'Invalid public key format', 'nostr-outbox-wordpress' ) ) );
-        }
-        
-        // Verify event pubkey matches (if present)
-        if ( ! empty( $event['pubkey'] ) ) {
-            $event_pubkey = strtolower( trim( $event['pubkey'] ) );
-            if ( $event_pubkey !== $pubkey ) {
-                // Log warning but don't fail - some extensions might send different formats
-                error_log( 'Nostr login - Pubkey mismatch: POST=' . $pubkey . ' Event=' . $event_pubkey );
-            }
-            // Use event pubkey if it's valid (more authoritative)
-            if ( strlen( $event_pubkey ) === 64 && ctype_xdigit( $event_pubkey ) ) {
-                $pubkey = $event_pubkey;
-            }
-        }
-        
-        // Log for debugging (remove in production)
-        error_log( 'Nostr login - Final pubkey to store: ' . $pubkey );
-
-        // Verify the Nostr signature
-        $auth = new Nostr_Login_Pay_Auth();
-        $verified = $auth->verify_nostr_event( $event, $signature );
-
-        if ( ! $verified ) {
-            wp_send_json_error( array( 'message' => __( 'Invalid signature', 'nostr-outbox-wordpress' ) ) );
-        }
-
-        // Find or create user
-        $user = $auth->find_or_create_user( $pubkey );
-
-        if ( is_wp_error( $user ) ) {
-            wp_send_json_error( array( 'message' => $user->get_error_message() ) );
-        }
-
-        // Log the user in
-        wp_set_auth_cookie( $user->ID, true );
-        do_action( 'wp_login', $user->user_login, $user );
-
-        // Determine redirect URL based on settings
-        $redirect_setting = get_option( 'nostr_login_pay_redirect_after_login', 'account' );
-        
-        switch ( $redirect_setting ) {
-            case 'admin':
-                $redirect_url = admin_url();
-                break;
-            case 'home':
-                $redirect_url = home_url();
-                break;
-            case 'shop':
-                $redirect_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url();
-                break;
-            case 'account':
-            default:
-                $redirect_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : admin_url();
-                break;
-        }
-
-        wp_send_json_success( array(
-            'message' => __( 'Successfully logged in!', 'nostr-outbox-wordpress' ),
-            'redirect' => $redirect_url,
-        ) );
+    public function render_general_section() {
+        echo '<p>' . esc_html__( 'Configure how Nostr login works on your site.', 'nostr-outbox-wordpress' ) . '</p>';
     }
 
     /**
-     * AJAX handler for NWC verification
+     * Render NWC section description
      */
-    public function ajax_verify_nwc() {
-        check_ajax_referer( 'nostr-outbox-wordpress-nonce', 'nonce' );
-
-        if ( ! is_user_logged_in() ) {
-            wp_send_json_error( array( 'message' => __( 'You must be logged in', 'nostr-outbox-wordpress' ) ) );
-        }
-
-        if ( ! class_exists( 'Nostr_Login_Pay_NWC_Wallet' ) ) {
-            wp_send_json_error( array( 'message' => __( 'NWC wallet handler not available', 'nostr-outbox-wordpress' ) ) );
-        }
-
-        $nwc_url = isset( $_POST['nwc_url'] ) ? sanitize_text_field( $_POST['nwc_url'] ) : '';
-
-        if ( empty( $nwc_url ) ) {
-            wp_send_json_error( array( 'message' => __( 'Missing NWC URL', 'nostr-outbox-wordpress' ) ) );
-        }
-
-        // Validate and save NWC connection
-        $nwc = new Nostr_Login_Pay_NWC_Wallet();
-        $result = $nwc->save_user_connection( get_current_user_id(), $nwc_url );
-
-        if ( is_wp_error( $result ) ) {
-            wp_send_json_error( array( 'message' => $result->get_error_message() ) );
-        }
-
-        wp_send_json_success( array(
-            'message' => __( 'NWC wallet connected successfully!', 'nostr-outbox-wordpress' ),
-            'balance' => $result['balance'],
-        ) );
+    public function render_nwc_section() {
+        ?>
+        <p><?php esc_html_e( 'Configure Lightning Network payment settings for WooCommerce.', 'nostr-outbox-wordpress' ); ?></p>
+        
+        <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 15px 0;">
+            <h4 style="margin-top: 0; color: #1e40af;">⚡ Lightning Payment Setup</h4>
+            <p style="margin: 0 0 10px 0;">
+                Enter your <strong>Lightning Address</strong> below to accept instant Bitcoin payments.
+            </p>
+            <ul style="margin: 5px 0 0 20px;">
+                <li>Customers scan QR code and pay with any Lightning wallet</li>
+                <li>Browser extension users get instant automatic confirmation</li>
+                <li>QR code payments verified manually via "Mark as Paid" button</li>
+            </ul>
+        </div>
+        
+        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0;">
+            <h4 style="margin-top: 0; color: #92400e;">🎯 Quick Setup with Coinos</h4>
+            <ol style="margin: 10px 0 10px 20px;">
+                <li>Sign up at <a href="https://coinos.io/" target="_blank" style="font-weight: bold;">coinos.io</a></li>
+                <li>Your Lightning address is: <code>username@coinos.io</code></li>
+                <li>Paste it in the "Lightning Address" field below</li>
+                <li><strong>Done!</strong> You're ready to accept Lightning payments</li>
+            </ol>
+        </div>
+        <?php
     }
-
 
     /**
-     * Declare WooCommerce compatibility
+     * Render checkbox field
      */
-    public function declare_wc_compatibility() {
-        if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
-            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
-                'custom_order_tables',
-                __FILE__,
-                true
-            );
-            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
-                'cart_checkout_blocks',
-                __FILE__,
-                true
-            );
+    public function render_checkbox_field( $args ) {
+        $name = $args['name'];
+        $label = isset( $args['label'] ) ? $args['label'] : '';
+        $value = get_option( $name, '' );
+        $is_checked = ( $value === '1' || $value === 1 || $value === true );
+        ?>
+        <label>
+            <input type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( $is_checked, true ); ?>>
+            <?php echo esc_html( $label ); ?>
+        </label>
+        <?php
+    }
+
+    /**
+     * Render text field
+     */
+    public function render_text_field( $args ) {
+        $name = $args['name'];
+        $description = isset( $args['description'] ) ? $args['description'] : '';
+        $value = get_option( $name, '' );
+        ?>
+        <input type="text" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+        <?php if ( $description ) : ?>
+            <p class="description"><?php echo esc_html( $description ); ?></p>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Render number field
+     */
+    public function render_number_field( $args ) {
+        $name = $args['name'];
+        $description = isset( $args['description'] ) ? $args['description'] : '';
+        $value = get_option( $name, 0 );
+        ?>
+        <input type="number" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>" class="small-text">
+        <?php if ( $description ) : ?>
+            <p class="description"><?php echo esc_html( $description ); ?></p>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Render textarea field
+     */
+    public function render_textarea_field( $args ) {
+        $name = $args['name'];
+        $description = isset( $args['description'] ) ? $args['description'] : '';
+        $value = get_option( $name, '' );
+        ?>
+        <textarea name="<?php echo esc_attr( $name ); ?>" rows="5" class="large-text"><?php echo esc_textarea( $value ); ?></textarea>
+        <?php if ( $description ) : ?>
+            <p class="description"><?php echo esc_html( $description ); ?></p>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Render role select field
+     */
+    public function render_role_select_field( $args ) {
+        $name = $args['name'];
+        $value = get_option( $name, 'customer' );
+        $roles = wp_roles()->get_names();
+        ?>
+        <select name="<?php echo esc_attr( $name ); ?>">
+            <?php foreach ( $roles as $role_value => $role_name ) : ?>
+                <option value="<?php echo esc_attr( $role_value ); ?>" <?php selected( $value, $role_value ); ?>>
+                    <?php echo esc_html( $role_name ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <?php
+    }
+
+    /**
+     * Render Lightning Address field
+     */
+    public function render_lightning_address_field( $args ) {
+        $name = $args['name'];
+        $value = get_option( $name, '' );
+        ?>
+        <input 
+            type="text" 
+            name="<?php echo esc_attr( $name ); ?>" 
+            value="<?php echo esc_attr( $value ); ?>" 
+            class="regular-text" 
+            style="width: 100%; max-width: 400px; font-size: 16px;" 
+            placeholder="yourname@coinos.io"
+        >
+        
+        <p class="description" style="margin-top: 10px;">
+            <?php _e( 'Your Lightning address where you want to receive payments.', 'nostr-outbox-wordpress' ); ?>
+        </p>
+        
+        <?php if ( ! empty( $value ) ) : ?>
+            <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; margin: 10px 0; max-width: 500px;">
+                <strong style="color: #15803d;">✓ Lightning Address Configured</strong><br>
+                <span style="font-size: 13px; color: #166534;">
+                    Payments will be sent to: <code style="background: #dcfce7; padding: 2px 6px; border-radius: 3px;"><?php echo esc_html( $value ); ?></code>
+                </span>
+            </div>
+        <?php else : ?>
+            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin: 10px 0; max-width: 500px;">
+                <strong style="color: #92400e;">⚡ Enter your Lightning Address to start accepting payments</strong><br>
+                <span style="font-size: 12px; color: #78350f;">
+                    Get one free at <a href="https://coinos.io" target="_blank">coinos.io</a>, 
+                    <a href="https://getalby.com" target="_blank">getalby.com</a>, or 
+                    <a href="https://strike.me" target="_blank">strike.me</a>
+                </span>
+            </div>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Render NWC connection field with help text
+     */
+    public function render_nwc_connection_field( $args ) {
+        $name = $args['name'];
+        $value = get_option( $name, '' );
+        
+        // Validate the stored value
+        $is_valid = false;
+        if ( ! empty( $value ) ) {
+            $is_valid = ( strpos( $value, 'nostr+walletconnect://' ) === 0 ) &&
+                        ( strpos( $value, 'relay=' ) !== false ) &&
+                        ( strpos( $value, 'secret=' ) !== false );
         }
-    }
-}
+        ?>
+        <input type="text" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>" class="regular-text" style="width: 100%; max-width: 600px; font-family: 'Courier New', monospace; font-size: 13px;" placeholder="nostr+walletconnect://...">
+        
+        <p class="description" style="margin-top: 10px;">
+            <?php _e( '<strong>For Auto-Verification of QR Code Payments.</strong> This gives the plugin read-only access to check if invoices are paid.', 'nostr-outbox-wordpress' ); ?>
+        </p>
+        
+        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 10px 0; max-width: 600px;">
+            <strong>⚡ Quick Setup (2 minutes):</strong><br>
+            <span style="font-size: 12px; color: #92400e;">
+                1. Go to <a href="https://coinos.io" target="_blank">coinos.io</a> → Settings → Plugins → NWC<br>
+                2. Create connection with: <code>lookup_invoice</code> permission<br>
+                3. Copy the connection string (starts with <code>nostr+walletconnect://</code>)<br>
+                4. Paste above → <strong>QR payments now auto-complete in seconds!</strong> ✅
+            </span>
+        </div>
 
-/**
- * Returns the main instance of the plugin
- */
-function nostr_login_and_pay() {
-    return Nostr_Login_And_Pay::instance();
-}
-
-// Initialize the plugin
-nostr_login_and_pay();
-
-/**
- * Load gateway class files on plugins_loaded
- * This ensures WooCommerce is fully loaded before we try to extend WC_Payment_Gateway
- * Priority 12 ensures we load after other payment gateway plugins (like Coinos at priority 11)
- */
-add_action( 'plugins_loaded', 'nostr_login_pay_load_gateway', 12 );
-function nostr_login_pay_load_gateway() {
-    if ( ! class_exists( 'WC_Payment_Gateway' ) ) {
-        // WooCommerce not active - payment features won't work but don't block the plugin
-        return;
-    }
-
-    // Load WooCommerce gateway class
-    if ( file_exists( NOSTR_LOGIN_PAY_PLUGIN_DIR . 'includes/woocommerce/class-wc-gateway-nwc.php' ) ) {
-        require_once NOSTR_LOGIN_PAY_PLUGIN_DIR . 'includes/woocommerce/class-wc-gateway-nwc.php';
-    }
-}
-
-/**
- * Add NWC gateway to WooCommerce
- * This filter must be registered at top level
- * Using priority 10 to load alongside other payment gateways
- */
-add_filter( 'woocommerce_payment_gateways', 'nostr_login_pay_add_gateway', 10 );
-function nostr_login_pay_add_gateway( $gateways ) {
-    if ( ! is_array( $gateways ) ) {
-        $gateways = array();
-    }
-    $gateways[] = 'WC_Gateway_NWC';
-    return $gateways;
-}
-
-/**
- * Register blocks support for NWC gateway
- */
-add_action( 'woocommerce_blocks_loaded', 'nostr_login_pay_register_blocks_support' );
-function nostr_login_pay_register_blocks_support() {
-    if ( ! class_exists( 'Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
-        return;
+        <?php if ( $is_valid ) : ?>
+            <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; margin: 10px 0; max-width: 600px;">
+                <strong style="color: #15803d;">✓ NWC Auto-Verification Enabled!</strong><br>
+                <span style="font-size: 12px; color: #166534;">
+                    ✅ Browser wallet payments: Auto-complete<br>
+                    ✅ QR code payments: Auto-complete via NWC lookup_invoice<br>
+                    Your store now has fully automated Lightning payments!
+                </span>
+            </div>
+        <?php elseif ( ! empty( $value ) ) : ?>
+            <div style="background: #fee; border-left: 4px solid #ef4444; padding: 12px; margin: 10px 0; max-width: 600px;">
+                <strong style="color: #dc2626;">✗ Invalid NWC Connection</strong><br>
+                <span style="font-size: 12px; color: #991b1b;">
+                    The connection string is invalid. It must start with <code>nostr+walletconnect://</code> and include <code>relay=</code> and <code>secret=</code> parameters.
+                </span>
+            </div>
+        <?php else : ?>
+            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 10px 0; max-width: 600px;">
+                <strong style="color: #92400e;">⚠️ Manual Payment Verification Required</strong><br>
+                <span style="font-size: 12px; color: #92400e;">
+                    QR code payments require manual "Mark as Paid" button click.<br>
+                    <strong>Add NWC above for instant auto-verification!</strong>
+                </span>
+            </div>
+        <?php endif; ?>
+        <?php
     }
 
-    require_once NOSTR_LOGIN_PAY_PLUGIN_DIR . 'includes/woocommerce/class-wc-gateway-nwc-blocks-support.php';
+    /**
+     * Render webhook URL field (read-only display)
+     */
+    public function render_webhook_url_field( $args ) {
+        $webhook_url = rest_url( 'nostr-outbox-wordpress/v1/webhook/payment' );
+        ?>
+        <input 
+            type="text" 
+            value="<?php echo esc_url( $webhook_url ); ?>" 
+            class="regular-text" 
+            readonly
+            onclick="this.select()"
+            style="width: 100%; max-width: 600px; background: #f9f9f9; cursor: pointer;"
+        >
+        
+        <p class="description" style="margin-top: 10px; color: #6b7280;">
+            <?php _e( 'Not required. Webhooks are not currently configured.', 'nostr-outbox-wordpress' ); ?>
+        </p>
+        
+        <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; margin: 10px 0; max-width: 600px;">
+            <strong style="color: #15803d;">✅ How Payment Verification Works:</strong><br>
+            <span style="font-size: 12px; color: #166534;">
+                <strong>Browser Extension Payments:</strong> Auto-complete instantly (no action needed!)<br>
+                <strong>QR Code Payments:</strong> Use the "✓ Mark as Paid" button in order admin (30 seconds)
+            </span>
+        </div>
+        <?php
+    }
 
-    add_action(
-        'woocommerce_blocks_payment_method_type_registration',
-        function( Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry ) {
-            $payment_method_registry->register( new WC_Gateway_NWC_Blocks_Support() );
+    /**
+     * Render the Relays & Redirect tab
+     */
+    public function render_relays_tab() {
+        // Get raw option first
+        $relays_raw = get_option( 'nostr_login_pay_relays' );
+        
+        // Debug what we got from database
+        error_log( 'Relays from DB (raw): ' . print_r( $relays_raw, true ) );
+        error_log( 'Relays type: ' . gettype( $relays_raw ) );
+        
+        // Set defaults if empty or not array
+        if ( ! $relays_raw || ! is_array( $relays_raw ) || empty( $relays_raw ) ) {
+            $relays = array(
+                'wss://relay.damus.io',
+                'wss://relay.snort.social',
+                'wss://nos.lol',
+                'wss://relay.nostr.band',
+            );
+            error_log( 'Using default relays' );
+        } else {
+            $relays = $relays_raw;
+            error_log( 'Using saved relays: ' . count( $relays ) . ' relays' );
         }
-    );
-}
 
-/**
- * Pass payment method data to frontend for blocks
- */
-add_filter( 'woocommerce_blocks_payment_method_data_registration', 'nostr_login_pay_add_payment_method_data' );
-function nostr_login_pay_add_payment_method_data( $payment_method_data ) {
-    $gateway_settings = get_option( 'woocommerce_nwc_settings', array() );
-    
-    if ( ! empty( $gateway_settings['enabled'] ) && $gateway_settings['enabled'] === 'yes' ) {
-        $payment_method_data['nwc_data'] = array(
-            'title' => isset( $gateway_settings['title'] ) ? $gateway_settings['title'] : 'Lightning Network',
-            'description' => isset( $gateway_settings['description'] ) ? $gateway_settings['description'] : 'Pay with Bitcoin Lightning Network via NWC',
-            'icon' => NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/images/lightning-icon.svg',
-            'supports' => array( 'products' ),
-        );
-    }
-    
-    return $payment_method_data;
-}
+        $redirect = get_option( 'nostr_login_pay_redirect_after_login', 'account' );
 
-/**
- * Activation hook - set default options
- */
-function nostr_login_pay_activate() {
-    // Set default options if they don't exist
-    if ( get_option( 'nostr_login_pay_enable_login' ) === false ) {
-        add_option( 'nostr_login_pay_enable_login', '1' );
-    }
-    if ( get_option( 'nostr_login_pay_enable_nwc' ) === false ) {
-        add_option( 'nostr_login_pay_enable_nwc', '1' );
-    }
-    if ( get_option( 'nostr_login_pay_auto_create_account' ) === false ) {
-        add_option( 'nostr_login_pay_auto_create_account', '1' );
-    }
-    if ( get_option( 'nostr_login_pay_nwc_enable_payment_gateway' ) === false ) {
-        add_option( 'nostr_login_pay_nwc_enable_payment_gateway', '1' );
-    }
-    if ( get_option( 'nostr_login_pay_default_role' ) === false ) {
-        add_option( 'nostr_login_pay_default_role', 'customer' );
-    }
-    if ( get_option( 'nostr_login_pay_relays' ) === false ) {
-        add_option( 'nostr_login_pay_relays', "wss://relay.damus.io\nwss://relay.primal.net\nwss://nos.lol" );
-    }
-    if ( get_option( 'nostr_login_pay_nwc_payment_timeout' ) === false ) {
-        add_option( 'nostr_login_pay_nwc_payment_timeout', 300 );
-    }
-    
-    // Flush rewrite rules to register custom endpoints
-    flush_rewrite_rules();
-}
-register_activation_hook( __FILE__, 'nostr_login_pay_activate' );
+        // Show success message after save
+        if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
+            $saved_relays = get_option( 'nostr_login_pay_relays', array() );
+            ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <strong><?php _e( 'Settings saved!', 'nostr-outbox-wordpress' ); ?></strong>
+                    <?php if ( is_array( $saved_relays ) ) : ?>
+                        <br><span style="font-size: 12px; color: #666;">
+                            <?php echo count( $saved_relays ); ?> relay(s) saved to database
+                        </span>
+                    <?php endif; ?>
+                </p>
+            </div>
+            <?php
+        }
+        
+        // Debug output for admins
+        if ( current_user_can( 'manage_options' ) && isset( $_GET['debug'] ) ) {
+            echo '<div class="notice notice-info"><p><strong>Debug:</strong> Relays = <pre>' . print_r( $relays, true ) . '</pre></p></div>';
+        }
 
-/**
- * Deactivation hook - clean up
- */
-function nostr_login_pay_deactivate() {
-    // Flush rewrite rules to clean up custom endpoints
-    flush_rewrite_rules();
+        ?>
+        <form method="post" action="options.php">
+            <?php settings_fields( 'nostr_login_pay_relays' ); ?>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label><?php _e( 'Nostr Relays', 'nostr-outbox-wordpress' ); ?></label>
+                    </th>
+                    <td>
+                        <div id="nostr-relay-list">
+                            <?php 
+                            // Debug: show what we're about to render
+                            if ( current_user_can( 'manage_options' ) ) {
+                                error_log( 'Rendering ' . count( $relays ) . ' relay inputs' );
+                                foreach ( $relays as $idx => $r ) {
+                                    error_log( "  Relay $idx: '" . $r . "'" );
+                                }
+                            }
+                            
+                            foreach ( $relays as $index => $relay ) : 
+                                $relay_value = trim( $relay );
+                            ?>
+                                <div class="relay-input-group" style="margin-bottom: 10px;">
+                                    <input 
+                                        type="text" 
+                                        name="nostr_login_pay_relays[]" 
+                                        value="<?php echo esc_attr( $relay_value ); ?>" 
+                                        style="width: 400px;" 
+                                        placeholder="wss://relay.example.com"
+                                        data-original="<?php echo esc_attr( $relay_value ); ?>"
+                                    />
+                                    <button type="button" class="button remove-relay" style="margin-left: 5px;"><?php _e( 'Remove', 'nostr-outbox-wordpress' ); ?></button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        
+                        <?php if ( current_user_can( 'manage_options' ) && isset( $_GET['debug'] ) ) : ?>
+                        <div style="background: #fff3cd; padding: 10px; margin: 10px 0; border: 1px solid #ffc107;">
+                            <strong>Debug Info:</strong><br>
+                            Relays array: <pre><?php print_r( $relays ); ?></pre>
+                        </div>
+                        <?php endif; ?>
+                        <button type="button" class="button" id="add-relay-btn" style="margin-top: 10px;"><?php _e( 'Add Relay', 'nostr-outbox-wordpress' ); ?></button>
+                        <p class="description">
+                            <?php _e( 'Enter Nostr relay WebSocket URLs (wss://...). Relays are used for fetching profile data, sending DMs, and NIP-05 verification.', 'nostr-outbox-wordpress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="nostr_login_pay_redirect_after_login"><?php _e( 'Redirect After Login', 'nostr-outbox-wordpress' ); ?></label>
+                    </th>
+                    <td>
+                        <select name="nostr_login_pay_redirect_after_login" id="nostr_login_pay_redirect_after_login">
+                            <option value="account" <?php selected( $redirect, 'account' ); ?>><?php _e( 'My Account Page', 'nostr-outbox-wordpress' ); ?></option>
+                            <option value="admin" <?php selected( $redirect, 'admin' ); ?>><?php _e( 'Admin Dashboard', 'nostr-outbox-wordpress' ); ?></option>
+                            <option value="home" <?php selected( $redirect, 'home' ); ?>><?php _e( 'Home Page', 'nostr-outbox-wordpress' ); ?></option>
+                            <option value="shop" <?php selected( $redirect, 'shop' ); ?>><?php _e( 'Shop Page', 'nostr-outbox-wordpress' ); ?></option>
+                        </select>
+                        <p class="description">
+                            <?php _e( 'Choose where to redirect users after they log in with Nostr.', 'nostr-outbox-wordpress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            
+            <?php submit_button( __( 'Save Settings', 'nostr-outbox-wordpress' ) ); ?>
+        </form>
+        
+        <hr style="margin: 40px 0;">
+        
+        <h2><?php _e( 'Diagnostics', 'nostr-outbox-wordpress' ); ?></h2>
+        <div style="background: #f0f9ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;">🔍 Check Saved Relays</h3>
+            <p>Click below to see exactly what relays are stored in your database:</p>
+            <button type="button" class="button" onclick="
+                var relays = <?php echo json_encode( get_option( 'nostr_login_pay_relays', array() ) ); ?>;
+                alert('Saved relays in database:\\n\\n' + JSON.stringify(relays, null, 2));
+            ">Show Database Value</button>
+            <p style="font-size: 12px; color: #666; margin: 10px 0 0 0;">
+                <strong>Current count:</strong> <?php echo count( is_array( $relays ) ? $relays : array() ); ?> relay(s) saved
+            </p>
+        </div>
+        
+        <hr style="margin: 20px 0;">
+        
+        <h2><?php _e( 'Popular Nostr Relays', 'nostr-outbox-wordpress' ); ?></h2>
+        <p><?php _e( 'Here are some popular, reliable Nostr relays you can add:', 'nostr-outbox-wordpress' ); ?></p>
+        <ul style="list-style: disc; margin-left: 20px;">
+            <li><code>wss://relay.damus.io</code> - Damus relay (popular, free)</li>
+            <li><code>wss://relay.snort.social</code> - Snort relay</li>
+            <li><code>wss://nos.lol</code> - Fast, reliable relay</li>
+            <li><code>wss://relay.nostr.band</code> - Nostr.band relay</li>
+            <li><code>wss://relay.primal.net</code> - Primal relay</li>
+            <li><code>wss://relay.current.fyi</code> - Current relay</li>
+            <li><code>wss://nostr-pub.wellorder.net</code> - Wellorder relay</li>
+            <li><code>wss://relay.bitcoiner.social</code> - Bitcoin community relay</li>
+        </ul>
+        
+        <style>
+        .relay-input-group { display: flex; align-items: center; }
+        </style>
+        
+        <script>
+        (function() {
+            const container = document.getElementById('nostr-relay-list');
+            const addBtn = document.getElementById('add-relay-btn');
+            
+            if (!container || !addBtn) {
+                console.error('Relay container or button not found');
+                return;
+            }
+            
+            // Add new relay input
+            addBtn.addEventListener('click', function() {
+                const div = document.createElement('div');
+                div.className = 'relay-input-group';
+                div.style.marginBottom = '10px';
+                div.innerHTML = '<input type="text" name="nostr_login_pay_relays[]" value="" style="width: 400px;" placeholder="wss://relay.example.com" />' +
+                    '<button type="button" class="button remove-relay" style="margin-left: 5px;"><?php echo esc_js( __( 'Remove', 'nostr-outbox-wordpress' ) ); ?></button>';
+                container.appendChild(div);
+            });
+            
+            // Remove relay input
+            container.addEventListener('click', function(e) {
+                if (e.target.classList.contains('remove-relay')) {
+                    const group = e.target.closest('.relay-input-group');
+                    // Ensure at least one input remains
+                    const remaining = container.querySelectorAll('.relay-input-group').length;
+                    if (remaining > 1) {
+                        group.remove();
+                    } else {
+                        alert('You must have at least one relay configured.');
+                    }
+                }
+            });
+            
+            // Debug: Log current inputs on page load
+            console.log('Relay inputs on load:', container.querySelectorAll('input[name="nostr_login_pay_relays[]"]').length);
+            container.querySelectorAll('input[name="nostr_login_pay_relays[]"]').forEach(function(input, index) {
+                console.log('Relay ' + index + ':', input.value);
+            });
+        })();
+        </script>
+        <?php
+    }
 }
-register_deactivation_hook( __FILE__, 'nostr_login_pay_deactivate' );
 
