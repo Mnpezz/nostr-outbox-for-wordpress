@@ -23,14 +23,14 @@ class Nostr_Login_Pay_NWC_Wallet {
     public function parse_nwc_url( $nwc_url ) {
         // NWC URL format: nostr+walletconnect://pubkey?relay=relay_url&secret=secret
         if ( ! preg_match( '/^nostr\+walletconnect:\/\/([a-f0-9]{64})\?(.+)$/', $nwc_url, $matches ) ) {
-            return new WP_Error( 'invalid_nwc_url', __( 'Invalid NWC connection URL', 'nostr-login-pay' ) );
+            return new WP_Error( 'invalid_nwc_url', __( 'Invalid NWC connection URL', 'nostr-outbox-wordpress' ) );
         }
 
         $pubkey = $matches[1];
         parse_str( $matches[2], $params );
 
         if ( empty( $params['relay'] ) || empty( $params['secret'] ) ) {
-            return new WP_Error( 'invalid_nwc_params', __( 'Missing required NWC parameters', 'nostr-login-pay' ) );
+            return new WP_Error( 'invalid_nwc_params', __( 'Missing required NWC parameters', 'nostr-outbox-wordpress' ) );
         }
 
         return array(
@@ -148,7 +148,7 @@ class Nostr_Login_Pay_NWC_Wallet {
         $connection = $this->get_user_connection( $user_id );
 
         if ( ! $connection ) {
-            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-login-pay' ) );
+            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-outbox-wordpress' ) );
         }
 
         // In a real implementation, you would call the NWC API here
@@ -179,7 +179,7 @@ class Nostr_Login_Pay_NWC_Wallet {
         $connection = $this->get_user_connection( $user_id );
 
         if ( ! $connection ) {
-            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-login-pay' ) );
+            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-outbox-wordpress' ) );
         }
 
         // In a real implementation, you would:
@@ -209,7 +209,7 @@ class Nostr_Login_Pay_NWC_Wallet {
         $connection = $this->get_user_connection( $user_id );
 
         if ( ! $connection ) {
-            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-login-pay' ) );
+            return new WP_Error( 'no_connection', __( 'No NWC wallet connected', 'nostr-outbox-wordpress' ) );
         }
 
         // In a real implementation, you would:
