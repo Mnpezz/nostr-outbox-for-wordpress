@@ -771,7 +771,7 @@ class Nostr_Login_Pay_User_Profile {
      * AJAX handler to disconnect wallet
      */
     public function ajax_disconnect_wallet() {
-        check_ajax_referer( 'nostr-login-pay-nonce', 'nonce' );
+        check_ajax_referer( 'nostr-outbox-wordpress-nonce', 'nonce' );
 
         if ( ! is_user_logged_in() ) {
             wp_send_json_error( array( 'message' => __( 'You must be logged in', 'nostr-outbox-wordpress' ) ) );
