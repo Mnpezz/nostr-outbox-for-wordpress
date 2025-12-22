@@ -1,0 +1,9 @@
+{
+    "name": "nostr/nostr-outbox-wordpress",
+    "description": "Send WordPress and WooCommerce notifications via Nostr instead of email",
+    "type": "wordpress-plugin",
+    "require": {
+        "simplito/elliptic-php": "^1.0",
+        "textalk/websocket": "^1.6"
+    }
+}

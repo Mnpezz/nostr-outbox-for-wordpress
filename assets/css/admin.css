@@ -1,0 +1,87 @@
+/**
+ * Admin Styles for Nostr Login & Pay Settings
+ */
+
+/* Settings Page */
+.nostr-login-pay-settings h2 {
+    margin-top: 30px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+/* Tab Navigation */
+.nav-tab-wrapper {
+    margin: 20px 0;
+}
+
+/* Form Tables */
+.form-table th {
+    width: 250px;
+}
+
+.form-table td code {
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+/* Info Boxes */
+.nostr-info-box {
+    background: #f0f6fc;
+    border-left: 4px solid #0969da;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 3px;
+}
+
+.nostr-info-box h4 {
+    margin-top: 0;
+    color: #0969da;
+}
+
+.nostr-warning-box {
+    background: #fff8e1;
+    border-left: 4px solid #f59e0b;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 3px;
+}
+
+.nostr-warning-box h4 {
+    margin-top: 0;
+    color: #f59e0b;
+}
+
+/* Field Descriptions */
+.description {
+    color: #666;
+    font-style: italic;
+}
+
+/* Relay Textarea */
+textarea[name="nostr_login_pay_relays"] {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+}
+
+/* Connection String Inputs */
+input[name="nostr_login_pay_nwc_merchant_wallet"] {
+    width: 100%;
+    max-width: 600px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+}
+
+/* Settings Sections */
+#nostr_login_pay_general_section,
+#nostr_login_pay_nwc_section {
+    margin-bottom: 20px;
+}
+
+/* Submit Button */
+.submit {
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+
