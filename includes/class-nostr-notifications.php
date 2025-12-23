@@ -486,9 +486,11 @@ class Nostr_Login_Pay_Notifications {
                 strpos( $subject_lower, 'confirmation' ) !== false ||  // "Gig Claim Confirmation"
                 strpos( $subject_lower, 'reminder' ) !== false ||      // "Reminder: You have a gig"
                 strpos( $subject_lower, 'you have been' ) !== false || // "You have been assigned"
-                strpos( $subject_lower, 'your order' ) !== false ||    // "Your order confirmation"
+                strpos( $subject_lower, 'your ' ) === 0 ||              // Starts with "Your " (customer-specific)
                 strpos( $subject_lower, 'your account' ) !== false ||  // "Your account..."
-                strpos( $subject_lower, 'welcome' ) !== false          // Welcome emails
+                strpos( $subject_lower, 'welcome' ) !== false ||       // Welcome emails
+                strpos( $subject_lower, 'has been received' ) !== false || // "order has been received"
+                strpos( $subject_lower, 'thank you for' ) !== false    // Thank you messages
             );
             
             // Skip individual messages - they shouldn't go to this group
