@@ -1,0 +1,288 @@
+/* WP Zap Rewards - Lightning Bitcoin Rewards */
+
+/* Notification Toast */
+.zap-reward-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #f7931a 0%, #f7a944 100%);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(247, 147, 26, 0.4);
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Different notification types */
+.zap-reward-notification.zap-success {
+    background: linear-gradient(135deg, #46b450 0%, #5ec768 100%);
+    box-shadow: 0 4px 12px rgba(70, 180, 80, 0.4);
+}
+
+.zap-reward-notification.zap-warning {
+    background: linear-gradient(135deg, #f0b849 0%, #f7c35d 100%);
+    box-shadow: 0 4px 12px rgba(240, 184, 73, 0.4);
+}
+
+.zap-reward-notification.zap-error {
+    background: linear-gradient(135deg, #d63638 0%, #e74c50 100%);
+    box-shadow: 0 4px 12px rgba(214, 54, 56, 0.4);
+}
+
+.zap-reward-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.zap-notification-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.zap-icon {
+    font-size: 24px;
+    animation: zap-pulse 2s ease-in-out infinite;
+}
+
+.zap-message {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+@keyframes zap-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+/* Reward Badge on Buttons */
+.zap-badge {
+    display: inline-block;
+    margin-left: 8px;
+    background: #f7931a;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    animation: zap-glow 2s ease-in-out infinite;
+}
+
+@keyframes zap-glow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(247, 147, 26, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(247, 147, 26, 0.8);
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .zap-reward-notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        transform: translateY(-200px);
+    }
+    
+    .zap-reward-notification.show {
+        transform: translateY(0);
+    }
+}
+
+/* Dashboard Styles */
+.zap-rewards-dashboard {
+    padding: 20px;
+    max-width: 1200px;
+}
+
+.zap-rewards-dashboard h2 {
+    color: #f7931a;
+    border-bottom: 3px solid #f7931a;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.zap-address-section {
+    margin-bottom: 30px;
+    padding: 25px;
+    background: linear-gradient(135deg, #fff9f0 0%, #ffffff 100%);
+    border-left: 4px solid #f7931a;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.zap-address-section h3 {
+    color: #333;
+    margin-top: 0;
+}
+
+.zap-address-section input[type="text"] {
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.zap-address-section input[type="text"]:focus {
+    border-color: #f7931a;
+    outline: none;
+}
+
+.zap-address-section .button-primary {
+    background: #f7931a;
+    border-color: #f7931a;
+    text-shadow: none;
+    box-shadow: none;
+}
+
+.zap-address-section .button-primary:hover {
+    background: #e68a17;
+    border-color: #e68a17;
+}
+
+.zap-address-section code {
+    background: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+    font-family: 'Courier New', monospace;
+    color: #f7931a;
+    font-weight: bold;
+}
+
+.rewards-history {
+    margin-bottom: 30px;
+}
+
+.rewards-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.rewards-table th,
+.rewards-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+}
+
+.rewards-table th {
+    background: linear-gradient(135deg, #f7931a 0%, #f7a944 100%);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+.rewards-table tr:last-child td {
+    border-bottom: none;
+}
+
+.rewards-table tr:hover {
+    background: #fffbf5;
+}
+
+.rewards-info {
+    margin-top: 30px;
+    padding: 25px;
+    background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+    border-left: 4px solid #2196f3;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.rewards-info h3 {
+    color: #333;
+    margin-top: 0;
+}
+
+.rewards-info ul {
+    list-style: none;
+    margin-left: 0;
+    padding-left: 0;
+}
+
+.rewards-info ul li {
+    padding: 8px 0;
+    padding-left: 30px;
+    position: relative;
+}
+
+.rewards-info ul li strong {
+    color: #f7931a;
+}
+
+.rewards-info .description {
+    color: #666;
+    font-size: 14px;
+    margin-top: 15px;
+}
+
+/* WooCommerce Checkout styling */
+.zap-rewards-checkout {
+    background: linear-gradient(135deg, #fff9f0 0%, #ffffff 100%);
+    padding: 20px;
+    border-left: 4px solid #f7931a;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.zap-rewards-checkout h3 {
+    color: #f7931a;
+    margin-top: 0;
+}
+
+/* Status badges */
+.status-completed {
+    color: #46b450;
+    font-weight: 600;
+}
+
+.status-failed {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.status-pending {
+    color: #f0b849;
+    font-weight: 600;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .zap-rewards-dashboard {
+        padding: 10px;
+    }
+    
+    .zap-address-section,
+    .rewards-info {
+        padding: 15px;
+    }
+    
+    .rewards-table {
+        font-size: 14px;
+    }
+    
+    .rewards-table th,
+    .rewards-table td {
+        padding: 8px 10px;
+    }
+}
+
