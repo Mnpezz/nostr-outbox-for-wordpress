@@ -1,8 +1,8 @@
 # ⚡ NOW - Nostr Outbox for WordPress
 
-**Send WordPress and WooCommerce notifications via Nostr instead of email.**
+**Send WordPress and WooCommerce notifications via Nostr instead of email, plus reward users with Bitcoin!**
 
-A comprehensive WordPress plugin that enables **encrypted Nostr Direct Messages**, **Nostr authentication**, **Lightning Network payments**, and **NIP-05 verification** for WooCommerce stores.
+A comprehensive WordPress plugin that enables **encrypted Nostr Direct Messages**, **Nostr authentication**, **Lightning Network payments**, **NIP-05 verification**, and **Bitcoin Lightning rewards** for WooCommerce stores.
 
 ---
 
@@ -10,8 +10,10 @@ A comprehensive WordPress plugin that enables **encrypted Nostr Direct Messages*
 
 ✨ **First WordPress plugin** with full Nostr DM integration  
 ⚡ **Instant Lightning payments** with auto-verification  
+💰 **Zap Rewards** - Reward users with Bitcoin for engagement  
 🔐 **Passwordless login** via Nostr browser extensions  
 💬 **Replace emails** with encrypted Nostr DMs  
+👥 **Multiple Group Chats** - Route different notifications to different teams  
 🆔 **NIP-05 verification** built-in (`username@yourdomain.com`)  
 🔄 **Profile sync** from Nostr relays  
 🤖 **Fully automatic** DM sending via WP-Cron  
@@ -21,6 +23,7 @@ A comprehensive WordPress plugin that enables **encrypted Nostr Direct Messages*
 - Privacy-focused WooCommerce stores
 - Bitcoin/Lightning-only shops
 - Nostr-native businesses
+- Community-driven sites
 - Censorship-resistant communications
 
 ---
@@ -35,15 +38,45 @@ A comprehensive WordPress plugin that enables **encrypted Nostr Direct Messages*
 - **Secure**: Server-side signature verification with time-limited auth events
 - **No Passwords**: Eliminate password fatigue and security risks
 
-### 💬 **Nostr Direct Messages** (NEW!)
+### 💬 **Nostr Direct Messages**
 - **Replace Email Notifications**: Send DMs instead of emails for orders, updates, etc.
 - **Automatic Sending**: PHP-based crypto for fully automatic DM delivery via WP-Cron
 - **NIP-04 Encryption**: All messages encrypted end-to-end
+- **Multiple Group Chats**: Create separate groups for admins, workers, special teams
+- **Smart Message Routing**: Different email types go to appropriate groups
 - **Persistent Queue**: Bulletproof queue system with corruption detection & auto-recovery
 - **DM Management Interface**: View queue, outbox, inbox, and compose messages
 - **0xchat Integration**: Users receive messages in their Nostr DM apps
 - **Site Nostr Identity**: Your site has its own nsec/npub for sending DMs
 - **Auto Opt-In**: Nostr users automatically receive DMs; traditional users get emails
+
+### 👥 **Multiple Group Chats**
+- **Create Unlimited Groups**: Workers, Admins, VIPs, etc.
+- **Granular Control**: Each group has its own message type settings
+- **Smart Filtering**: Individual confirmations stay private, admin notifications go to groups
+- **User-Friendly Management**: Select from existing users or add custom npubs
+- **Per-Group Toggle**: Enable/disable different notification types per group
+- **Message Type Routing**:
+  - 🛒 WooCommerce Orders (New orders)
+  - 👤 New User Registrations
+  - 🔑 Password Resets
+  - ⚙️ Admin Notifications
+  - 💬 Comments & Reviews
+  - 📋 Gig Notifications (if using gig plugins)
+
+### 💰 **Zap Rewards**
+- **Reward Engagement**: Automatically send Bitcoin Lightning payments to users
+- **Comment Rewards**: Pay users for approved comments (configurable amount)
+- **Review Rewards**: Incentivize product reviews on WooCommerce
+- **Purchase Rewards**: Cashback percentage on purchases
+- **Daily Limits**: Prevent abuse with per-user daily reward caps
+- **User Dashboard**: Users see their rewards history at `/my-account/zap-rewards/`
+- **Lightning Address Field**: Users can set their Lightning address for rewards
+- **Admin Management**: View pending, completed, and failed rewards
+- **Payment Methods**:
+  - Coinos API (recommended - simple and reliable)
+  - NWC Protocol (experimental - for future when BIP-340 Schnorr libraries mature)
+- **Flexible Addresses**: Supports Lightning addresses, Coinos usernames, and invoices
 
 ### ⚡ **Lightning Network Payments**
 - **Instant Payments**: Accept Bitcoin via Lightning Network (settles in seconds)
@@ -118,7 +151,31 @@ For QR code payments to auto-complete:
 
 🎉 **Done! QR payments now auto-complete in 3-6 seconds!**
 
-### **Step 5: Configure Nostr Relays & DMs (Optional)**
+### **Step 5: Configure Zap Rewards (Optional)**
+
+Reward your users with Bitcoin for engagement!
+
+1. Go to **Settings → NOW - Nostr Outbox → 💰 Zap Rewards → Settings**
+2. Add your **Coinos API Token** (get it from [coinos.io/settings](https://coinos.io/settings))
+3. Enable reward types (comments, reviews, purchases)
+4. Set reward amounts and daily limits
+5. **Save Settings**
+
+Users will receive Lightning payments automatically when they engage!
+
+### **Step 6: Configure Group Chats (Optional)**
+
+Route notifications to different teams:
+
+1. Go to **Settings → NOW - Nostr Outbox → 💬 DM Management → Group Chats**
+2. Create groups (e.g., "Admins", "Workers", "VIPs")
+3. Add members (select existing users or paste custom npubs)
+4. Enable message types for each group
+5. **Save**
+
+Now different notifications automatically go to the right teams!
+
+### **Step 7: Configure Nostr Relays & DMs**
 
 1. Go to **Settings → NOW - Nostr Outbox → Relays**
 2. Add your preferred Nostr relays (or use defaults)
@@ -131,7 +188,7 @@ For QR code payments to auto-complete:
 - Users can toggle DM preference in their account settings
 - Admin can manually compose DMs to any user from DM Management
 
-🎉 **All done! Your site now has full Nostr integration!**
+🎉 **All done! Your site now has full Nostr integration + Bitcoin rewards!**
 
 ---
 
@@ -154,18 +211,38 @@ Private, encrypted, censorship-resistant! 💬
 **Automatic Sending:**
 1. User places order or triggers notification
 2. Plugin intercepts email
-3. Converts to encrypted Nostr DM (NIP-04)
-4. Adds to queue
-5. WP-Cron processes queue every 5 minutes
-6. PHP crypto signs and encrypts
-7. Published to relays via WebSocket
-8. User receives in Nostr DM app ✅
+3. Checks if user has Nostr pubkey → converts to encrypted DM
+4. Checks if message should go to group chats → queues for groups
+5. Adds to queue
+6. WP-Cron processes queue every 5 minutes
+7. PHP crypto signs and encrypts
+8. Published to relays via WebSocket
+9. Users receive in Nostr DM app ✅
 
-**Manual Sending:**
-- Admin can compose DMs directly
-- Select user or enter custom npub
-- DM placed in the queue
-- Useful for customer service
+**Group Chat Routing:**
+- Individual confirmations ("Your order...", "Reminder: You have...") → Stay private
+- Admin notifications ("New order #123", "Gig claimed") → Sent to configured groups
+- Smart filtering prevents private messages from going to groups
+
+### **Zap Rewards Flow**
+
+```
+User Action (comment/review/purchase)
+    ↓
+Plugin checks: Is reward enabled?
+    ↓
+✅ Yes → Check daily limit
+    ↓
+Not exceeded → Create reward record
+    ↓
+Resolve Lightning address to invoice
+    ↓
+Send payment via Coinos API
+    ↓
+Payment successful → Mark as completed
+    ↓
+User receives sats! ⚡
+```
 
 ### **For Customers**
 
@@ -180,6 +257,12 @@ Private, encrypted, censorship-resistant! 💬
 2. Confirm payment in your wallet
 3. Plugin detects payment via NWC
 4. Order completes automatically ✅ (if NWC configured)
+
+#### **Earning Zap Rewards**
+1. Set Lightning address in **My Account → Zap Rewards**
+2. Leave comments, reviews, or make purchases
+3. Receive automatic Bitcoin payments! ⚡
+4. View reward history on rewards page
 
 ### **For Store Owners**
 
@@ -198,6 +281,10 @@ Order Created → Invoice Generated (via Lightning Address)
         └───────────────┬───────────────┘
                         │
                 Order Complete! 🎉
+                        │
+        Check if rewards enabled for user
+                        │
+        ✅ Yes → Send Zap Reward ⚡
 ```
 
 ---
@@ -223,6 +310,40 @@ Order Created → Invoice Generated (via Lightning Address)
 \* Without NWC: QR payments require manual "Mark as Paid" button.  
 With NWC: QR payments auto-complete in seconds! 🚀
 
+### **Zap Rewards Settings** (Settings → NOW - Nostr Outbox → 💰 Zap Rewards)
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Coinos API Token** | API token from coinos.io/settings | None |
+| **Enable Comments** | Reward approved comments | ❌ Disabled |
+| **Comment Amount** | Sats per comment | 100 |
+| **Enable Reviews** | Reward product reviews | ❌ Disabled |
+| **Review Amount** | Sats per review | 500 |
+| **Enable Purchases** | Cashback on purchases | ❌ Disabled |
+| **Purchase Percentage** | Cashback % of order total | 1% |
+| **Daily Limit** | Max rewards per user per day | 5 |
+
+💡 **Tip:** 100 sats ≈ $0.10 USD (varies with Bitcoin price)
+
+### **Group Chat Settings** (Settings → NOW - Nostr Outbox → 💬 DM Management → Group Chats)
+
+**Per-Group Configuration:**
+- **Group Name**: Descriptive name (e.g., "Admins", "Workers")
+- **Enabled**: Toggle group on/off
+- **Members**: Select existing users or add custom npubs
+- **Message Types**: Choose which notifications this group receives
+  - 🛒 WooCommerce Orders
+  - 👤 New User Registrations
+  - 🔑 Password Resets
+  - ⚙️ Admin Notifications
+  - 💬 Comments & Reviews
+  - 📋 Gig Notifications
+
+**Smart Filtering:**
+- Individual messages (confirmations, reminders) automatically stay private
+- Only admin-level notifications go to groups
+- Prevents sensitive customer info from going to wrong people
+
 ### **Relay Settings** (Settings → NOW - Nostr Outbox → Relays)
 
 | Setting | Description | Default |
@@ -241,16 +362,16 @@ With NWC: QR payments auto-complete in seconds! 🚀
 **Sub-tabs:**
 - **🔑 Site Keys**: View your site's nsec/npub for sending DMs
 - **📋 Queue**: View pending DMs waiting to be sent
-- **📤 Outbox**: View sent DM history
+- **📤 Outbox**: View sent DM history (newest first)
 - **📥 Inbox**: View incoming DMs (coming soon)
-- **✍️ Compose**: Manually compose and send DMs to users
+- **✍️ Compose**: Manually compose and send DMs to users or groups
+- **👥 Group Chats**: Manage multiple group chats
 
-**Features:**
-- Site Nostr identity (automatically generated)
-- DM queue processing (automatic via WP-Cron every 5 minutes)
-- Manual "Process Queue Now" button
-- NIP-04 encrypted messages
-- Published to configured relays
+**Compose Features:**
+- Send to individual users (by username or npub)
+- Send to specific groups
+- Dropdown shows all active groups with member counts
+- Messages queued and sent automatically via WP-Cron
 
 ### **Advanced Tools**
 
@@ -285,42 +406,50 @@ With NWC: QR payments auto-complete in seconds! 🚀
 ### **For Customers:**
 - **Browser Extension** (for login & browser wallet payments): Alby or nos2x
 - **Nostr DM App** (for receiving messages): 0xchat, Amethyst, Damus, etc.
-
----
-
-## 🌐 Browser Extensions
-
-For **Nostr login** and **browser wallet payments**, users need:
-
-- **[Alby](https://getalby.com/)** - Full-featured Lightning wallet + Nostr (Chrome, Firefox)
-- **[nos2x](https://github.com/fiatjaf/nos2x)** - Nostr signer (Chrome)
-
-Both support WebLN for instant Lightning payments!
-
----
-
-## 🔐 Security
-
-- ✅ **Server-Side Verification**: All Nostr login events verified server-side
-- ✅ **Time-Limited Auth**: Auth events expire after 5 minutes
-- ✅ **Read-Only NWC**: Auto-verification uses `lookup_invoice` (no spend permission)
-- ✅ **No Private Keys**: Plugin never handles private keys
-- ✅ **WordPress Security**: Integrates with standard WordPress user management
-
----
-
-## 📋 Payment Methods Comparison
-
-| Method | Speed | Compatibility | Auto-Complete | Setup |
-|--------|-------|---------------|---------------|-------|
-| **Browser Wallet** | ⚡ Instant | Requires extension | ✅ Always | None |
-| **QR Code** | ⚡ Fast | 📱 Universal | ✅ With NWC | 2 min |
-
-**Recommendation**: Configure NWC for full auto-verification on all payment methods!
+- **Lightning Wallet** (for receiving rewards): Any wallet with Lightning address
 
 ---
 
 ## 🛠️ Troubleshooting
+
+### **Zap Rewards Issues**
+
+#### **"Rewards page not found" (404 error)**
+1. Go to **Plugins** → Deactivate "Nostr Outbox WordPress"
+2. Reactivate it
+3. Or go to **Settings → Permalinks** and click "Save Changes"
+4. This flushes rewrite rules and registers the `/my-account/zap-rewards/` endpoint
+
+#### **Reward stuck in "Processing" or "Failed"**
+1. Go to **Zap Rewards → Pending Rewards**
+2. Click **"Retry"** button
+3. Check that Coinos API token is configured correctly
+4. Verify user's Lightning address is valid
+5. Check debug.log for specific error messages
+
+#### **Payment failed: "No preimage in response"**
+- This means the payment method returned success but we're looking for wrong fields
+- Check that you're using **Coinos API** (not NWC)
+- NWC has BIP-340 Schnorr signature issues in PHP (experimental)
+
+### **Group Chat Issues**
+
+#### **Individual messages going to groups**
+- The plugin filters messages starting with "Your...", "confirmation", "reminder"
+- If a message still goes to groups incorrectly, check the subject line
+- You can adjust filtering in `class-nostr-notifications.php`
+
+#### **Group not receiving messages**
+1. Check group is **Enabled**
+2. Verify **Message Types** are enabled for that group
+3. Ensure group has valid **Members** (npubs or hex pubkeys)
+4. Check **Queue** tab to see if messages are queued
+5. Use **"Process Queue Now"** button to test immediately
+
+#### **Custom npubs not working**
+- Ensure npubs start with `npub1`
+- Plugin auto-converts npubs to hex format
+- Check debug.log for conversion errors
 
 ### **"Lightning (NWC)" not showing in checkout**
 1. Check: Settings → NOW - Nostr Outbox → NWC Settings
@@ -333,7 +462,7 @@ Both support WebLN for instant Lightning payments!
 1. Check: Is NWC Connection configured?
 2. Go to: Settings → NOW - Nostr Outbox → NWC Settings
 3. Look for: "✓ NWC Auto-Verification Enabled!" message
-4. If not: Follow Step 3 in Quick Start above
+4. If not: Follow Step 4 in Quick Start above
 
 ### **Wrong satoshi amounts**
 1. Go to: Settings → NOW - Nostr Outbox → NWC Settings
@@ -423,29 +552,37 @@ nostr-outbox-wordpress/
 ├── README.md                            # This file
 ├── includes/
 │   ├── class-nostr-auth.php             # Nostr authentication
-│   ├── class-admin-settings.php         # Admin settings page
+│   ├── class-admin-settings.php         # Admin settings page (with Zap Rewards tab)
 │   ├── class-user-profile.php           # User profile management
 │   ├── class-nip05-verification.php     # NIP-05 identity verification
-│   ├── class-nostr-notifications.php    # Email → DM replacement
+│   ├── class-nostr-notifications.php    # Email → DM replacement (+ group filtering)
 │   ├── class-nostr-profile-sync.php     # Profile sync from relays
 │   ├── class-nostr-connect.php          # Connect existing users to Nostr
-│   ├── class-dm-admin.php               # DM management interface
+│   ├── class-dm-admin.php               # DM management interface (+ group chats)
 │   ├── class-nostr-crypto-php.php       # PHP crypto for automatic DMs
-│   ├── class-lnurl-service.php          # LNURL invoice generation
 │   ├── class-nwc-wallet.php             # NWC connection parsing
+│   ├── class-nwc-client.php             # NWC protocol client (experimental)
+│   ├── class-lnurl-service.php          # LNURL invoice generation
+│   ├── class-zap-rewards.php            # Zap Rewards main class
+│   ├── class-zap-rewards-admin.php      # Zap Rewards admin interface
+│   ├── class-zap-rewards-processor.php  # Zap Rewards payment processor
 │   └── woocommerce/
 │       ├── class-wc-gateway-nwc.php     # Payment gateway
 │       └── class-wc-gateway-nwc-blocks-support.php # Blocks support
+├── templates/
+│   └── rewards-page.php                 # User-facing rewards page template
 ├── assets/
 │   ├── js/
 │   │   ├── frontend.js                  # Nostr login
 │   │   ├── nwc-payment.js               # Payment UI & NWC verification
 │   │   ├── nostr-profile-sync.js        # Profile sync client
 │   │   ├── nostr-dm-sender.js           # DM sending (browser)
+│   │   ├── zap-rewards.js               # Zap Rewards frontend
 │   │   └── checkout.js                  # WooCommerce checkout
 │   └── css/
 │       ├── frontend.css                 # Frontend styles
-│       └── admin.css                    # Admin styles
+│       ├── admin.css                    # Admin styles
+│       └── zap-rewards.css              # Zap Rewards styles
 ├── vendor/                              # Composer dependencies
 │   ├── simplito/elliptic-php/           # Elliptic curve crypto
 │   ├── textalk/websocket/               # WebSocket client
@@ -464,7 +601,54 @@ nostr-outbox-wordpress/
 
 ## 🔄 Changelog
 
-### **Version 1.2.0** (Current) - December 2025
+### **Version 1.3.0** (Current) - December 2025
+**Major Features Added:**
+- ✅ **Zap Rewards System**:
+  - Automatic Bitcoin Lightning payments for user engagement
+  - Comment rewards (configurable sats per approved comment)
+  - Review rewards (incentivize WooCommerce product reviews)
+  - Purchase rewards (cashback percentage on orders)
+  - Daily per-user reward limits (prevent abuse)
+  - User dashboard at `/my-account/zap-rewards/`
+  - Lightning address management for users
+  - Admin pending/completed/failed rewards interface
+  - Retry failed payments with one click
+  - Coinos API integration (primary payment method)
+  - Lightning address resolution (supports addresses, usernames, invoices)
+  - Real-time payment status tracking
+  - Automatic invoice generation via LNURL
+  
+- ✅ **Multiple Group Chats**:
+  - Create unlimited groups (Admins, Workers, VIPs, etc.)
+  - Per-group message type configuration
+  - Smart message filtering (keeps individual messages private)
+  - User-friendly member selection (existing users + custom npubs)
+  - Individual group compose options
+  - Granular control over notification routing
+  
+- ✅ **Enhanced Compose Tab**:
+  - Send to individual users or specific groups
+  - Dropdown shows all active groups with member counts
+  - Direct npub recipient support
+  - Automatic npub-to-hex conversion
+  - Better user experience
+
+- ✅ **Improved Message Filtering**:
+  - Smart detection of individual vs. admin messages
+  - Filters confirmations, reminders, "Your..." messages
+  - Prevents sensitive customer data from going to groups
+  - Ensures proper notification routing
+
+**Bug Fixes & Improvements:**
+- ✅ Fixed outbox message order (newest first)
+- ✅ Improved group chat member display (shows usernames/npubs)
+- ✅ Better npub conversion error handling
+- ✅ Enhanced payment error messages
+- ✅ Fixed reward status updates
+- ✅ Improved Coinos API response parsing
+- ✅ Better Lightning address validation
+
+### **Version 1.2.0** - December 2025
 **Major Features Added:**
 - ✅ **Nostr Direct Messaging System**:
   - NIP-04 encrypted DMs
@@ -477,24 +661,29 @@ nostr-outbox-wordpress/
   - Persistent queue storage (WordPress options, not transients)
   - Individual queue item deletion
   - Auto opt-in for Nostr users
+  
 - ✅ **NIP-05 Identity Verification**:
   - `/.well-known/nostr.json` endpoint
   - `username@yourdomain.com` identities
   - Automatic verification for all users
+  
 - ✅ **Profile Sync from Relays**:
   - Fetch user profile data (name, avatar, bio)
   - Kind 0 metadata events
   - Manual sync button
+  
 - ✅ **Relay Configuration**:
   - Configure custom Nostr relays
   - Post-login redirect options
   - Relay management UI
+  
 - ✅ **PHP Crypto Implementation**:
   - `simplito/elliptic-php` for signing
   - `textalk/websocket` for relay publishing
   - Schnorr-compatible ECDSA signatures
   - ECDH shared secret generation
   - NIP-04 encryption/decryption
+  
 - ✅ **Enhanced Admin Interface**:
   - Integrated DM management
   - Dashboard DM queue widget
@@ -539,6 +728,35 @@ nostr-outbox-wordpress/
 - Simple order status checks (verification happens on frontend)
 - WooCommerce HPOS compatible
 
+### **Zap Rewards Architecture**
+
+**Payment Processing:**
+- **Primary**: Coinos REST API (simple, reliable, fully functional)
+- **Experimental**: NWC Protocol (requires BIP-340 Schnorr - not yet available in PHP)
+- Lightning address resolution via LNURL
+- Automatic invoice generation
+- Payment status tracking in custom database table
+- Retry mechanism for failed payments
+
+**Database Schema:**
+```sql
+wp_zap_rewards
+├── id (bigint)
+├── user_id (bigint)
+├── zap_address (varchar)
+├── reward_type (varchar) - 'comment', 'review', 'purchase'
+├── amount (bigint) - satoshis
+├── status (varchar) - 'pending', 'completed', 'failed'
+├── block_hash (varchar) - transaction ID or preimage
+├── error_message (text)
+├── comment_id (bigint)
+├── order_id (bigint)
+└── created_at (datetime)
+```
+
+**User Meta:**
+- `zap_address` - User's Lightning address for receiving rewards
+
 ### **Nostr DM Architecture**
 
 **Frontend (JavaScript)**:
@@ -555,23 +773,44 @@ nostr-outbox-wordpress/
 - Schnorr-compatible ECDSA signatures
 - ECDH shared secret generation
 
-**DM Flow**:
+**DM Flow:**
 ```
 1. WooCommerce Event (order, notification, etc.)
    ↓
 2. Email intercepted by plugin
    ↓
-3. Converted to Nostr DM (NIP-04)
+3. Check if user has Nostr pubkey → Convert to Nostr DM (NIP-04)
    ↓
-4. Added to DM queue
+4. Check if message should go to group chats → Queue for groups
    ↓
-5. WP-Cron runs every 5 minutes
+5. Added to DM queue
    ↓
-6. PHP crypto signs & encrypts event
+6. WP-Cron runs every 5 minutes
    ↓
-7. Published to configured relays via WebSocket
+7. PHP crypto signs & encrypts event
    ↓
-8. User receives in 0xchat/Damus/etc. ✅
+8. Published to configured relays via WebSocket
+   ↓
+9. Users receive in 0xchat/Damus/etc. ✅
+```
+
+### **Group Chat Routing Logic:**
+
+```
+Email Triggered
+   ↓
+Check subject line
+   ↓
+Is it individual? (starts with "Your", "confirmation", "reminder", etc.)
+   ↓
+✅ Yes → Send ONLY to individual recipient
+   │
+   ↓
+❌ No → Check each group's settings
+   │
+   ├─ Group A: WooCommerce Orders enabled? → ✅ Queue for Group A
+   ├─ Group B: Admin Notifications enabled? → ✅ Queue for Group B
+   └─ Group C: Comments enabled? → ❌ Skip Group C
 ```
 
 ### **Supported Nostr NIPs**
@@ -583,6 +822,7 @@ nostr-outbox-wordpress/
 
 ### **Supported NWC Methods**
 - `lookup_invoice` - Check invoice payment status (used for auto-verification)
+- `pay_invoice` - Send Lightning payment (experimental, requires BIP-340 Schnorr)
 
 ### **Browser Compatibility**
 - Tested with: Chrome, Firefox, Brave
@@ -642,6 +882,7 @@ Built with:
 - [Nostr Wallet Connect](https://nwc.dev/) - Payment protocol specification
 - [LNURL](https://github.com/lnurl/luds) - Lightning Address invoice generation
 - [0xchat](https://github.com/0xchat-app) - Inspiration for DM interface
+- [Coinos](https://coinos.io/) - Lightning wallet and API
 
 **Influenced by:**
 - [YEGHRO_NostrLogin](https://github.com/Yeghro/YEGHRO_NostrLogin) - Nostr WordPress auth
