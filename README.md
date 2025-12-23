@@ -156,7 +156,7 @@ For QR code payments to auto-complete:
 Reward your users with Bitcoin for engagement!
 
 1. Go to **Settings → NOW - Nostr Outbox → 💰 Zap Rewards → Settings**
-2. Add your **Coinos API Token** (get it from [coinos.io/settings](https://coinos.io/settings))
+2. Add your **Coinos API Token** (get it from [coinos.io/docs](https://coinos.io/docs))
 3. Enable reward types (comments, reviews, purchases)
 4. Set reward amounts and daily limits
 5. **Save Settings**
