@@ -484,6 +484,9 @@ class Nostr_Login_Pay_Admin_Settings {
                 <a href="?page=nostr-outbox-wordpress&tab=dm" class="nav-tab <?php echo $active_tab === 'dm' ? 'nav-tab-active' : ''; ?>">
                     💬 <?php _e( 'DM Management', 'nostr-outbox-wordpress' ); ?>
                 </a>
+                <a href="?page=nostr-outbox-wordpress&tab=zap" class="nav-tab <?php echo $active_tab === 'zap' ? 'nav-tab-active' : ''; ?>">
+                    💰 <?php _e( 'Zap Rewards', 'nostr-outbox-wordpress' ); ?>
+                </a>
             </h2>
 
             <?php if ( $active_tab === 'relays' ) : ?>
@@ -494,6 +497,15 @@ class Nostr_Login_Pay_Admin_Settings {
                     $dm_admin = Nostr_Login_Pay_DM_Admin::instance();
                     // Render the full DM admin interface with sub-tabs
                     $dm_admin->render_dm_tabs();
+                }
+                ?>
+            <?php elseif ( $active_tab === 'zap' ) : ?>
+                <?php 
+                if ( class_exists( 'Nostr_Outbox_Zap_Rewards_Admin' ) ) {
+                    $zap_admin = Nostr_Outbox_Zap_Rewards_Admin::instance();
+                    $zap_admin->render_zap_tab();
+                } else {
+                    echo '<p>Zap Rewards not available.</p>';
                 }
                 ?>
             <?php else : ?>
