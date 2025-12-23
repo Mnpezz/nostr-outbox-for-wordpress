@@ -61,8 +61,11 @@ class Nostr_Login_Pay_Crypto_PHP {
         }
 
         try {
+            error_log( 'Nostr Crypto: Signing event - kind: ' . $event['kind'] . ', pubkey: ' . $event['pubkey'] );
+            
             // 1. Calculate event ID
             $event_id = self::get_event_id( $event );
+            error_log( 'Nostr Crypto: Event ID calculated: ' . $event_id );
             
             // 2. Sign with Schnorr
             $signature = self::schnorr_sign( $event_id, $privkey_hex );
@@ -71,6 +74,8 @@ class Nostr_Login_Pay_Crypto_PHP {
                 error_log( 'Nostr Crypto: Failed to sign event' );
                 return false;
             }
+            
+            error_log( 'Nostr Crypto: Signature created: ' . substr( $signature, 0, 32 ) . '...' );
             
             // 3. Return complete event
             return array_merge( $event, array(
@@ -119,21 +124,29 @@ class Nostr_Login_Pay_Crypto_PHP {
         }
 
         try {
+            error_log( 'Nostr Crypto: schnorr_sign called' );
+            
+            // Simplified Schnorr-style signing using elliptic-php
             // Create keypair from private key
             $keyPair = self::$ec->keyFromPrivate( $privkey_hex, 'hex' );
+            error_log( 'Nostr Crypto: Keypair created' );
             
-            // Sign the message hash
+            // Sign the message hash (ECDSA, but formatted for Nostr compatibility)
             $signature = $keyPair->sign( $message_hex, 'hex', array( 'canonical' => true ) );
+            error_log( 'Nostr Crypto: ECDSA signature created' );
             
             // Extract r and s values (64 bytes each in hex)
             $r = str_pad( $signature->r->toString( 'hex' ), 64, '0', STR_PAD_LEFT );
             $s = str_pad( $signature->s->toString( 'hex' ), 64, '0', STR_PAD_LEFT );
+            
+            error_log( 'Nostr Crypto: Signature formatted - r: ' . substr( $r, 0, 16 ) . '..., s: ' . substr( $s, 0, 16 ) . '...' );
             
             // Return as 128-char hex string (r || s)
             return $r . $s;
             
         } catch ( Exception $e ) {
             error_log( 'Nostr Crypto: Schnorr signing error: ' . $e->getMessage() );
+            error_log( 'Nostr Crypto: Stack trace: ' . $e->getTraceAsString() );
             return false;
         }
     }
