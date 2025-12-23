@@ -23,26 +23,37 @@ class Nostr_Login_Pay_NWC_Client {
      * @return array|WP_Error Response data or error
      */
     public function make_request( $connection, $method, $params = array() ) {
+        error_log( "NWC Client: make_request called - method: $method, params: " . wp_json_encode( $params ) );
+        
         // Validate connection
         if ( empty( $connection['pubkey'] ) || empty( $connection['relay'] ) || empty( $connection['secret'] ) ) {
-            return new WP_Error( 'invalid_connection', __( 'Invalid NWC connection data', 'nostr-outbox-wordpress' ) );
+            return new WP_Error( 'invalid_connection', 'Invalid NWC connection data' );
         }
+
+        error_log( "NWC Client: Connection valid - relay: " . $connection['relay'] . ", wallet pubkey: " . $connection['pubkey'] );
 
         // Create NWC request event
         $event = $this->create_nwc_event( $connection, $method, $params );
         
         if ( is_wp_error( $event ) ) {
+            error_log( "NWC Client: Failed to create event: " . $event->get_error_message() );
             return $event;
         }
+
+        error_log( "NWC Client: Event created successfully, sending to relay..." );
 
         // Send to relay and wait for response
         $response = $this->send_to_relay( $connection['relay'], $event, $connection['pubkey'] );
         
         if ( is_wp_error( $response ) ) {
+            error_log( "NWC Client: Relay communication failed: " . $response->get_error_message() );
             return $response;
         }
 
-        return $this->parse_nwc_response( $response );
+        error_log( "NWC Client: Got response from relay, parsing..." );
+
+        // Parse and decrypt response
+        return $this->parse_nwc_response( $response, $connection );
     }
 
     /**
@@ -74,6 +85,19 @@ class Nostr_Login_Pay_NWC_Client {
     }
 
     /**
+     * Pay a Lightning invoice
+     *
+     * @param array  $connection NWC connection data
+     * @param string $invoice    Lightning invoice (payment request)
+     * @return array|WP_Error Payment result or error
+     */
+    public function pay_invoice( $connection, $invoice ) {
+        return $this->make_request( $connection, 'pay_invoice', array(
+            'invoice' => $invoice,
+        ) );
+    }
+
+    /**
      * Get wallet balance
      *
      * @param array $connection NWC connection data
@@ -92,22 +116,41 @@ class Nostr_Login_Pay_NWC_Client {
      * @return array|WP_Error Event data or error
      */
     private function create_nwc_event( $connection, $method, $params ) {
+        if ( ! class_exists( 'Nostr_Login_Pay_Crypto_PHP' ) ) {
+            return new WP_Error( 'crypto_not_loaded', 'Crypto library not loaded' );
+        }
+
         // NWC uses kind 23194 for requests
         $content = wp_json_encode( array(
             'method' => $method,
             'params' => $params,
         ) );
 
-        // Encrypt the content with the secret
-        $encrypted_content = $this->encrypt_content( $content, $connection['secret'], $connection['pubkey'] );
+        error_log( "NWC Client: Encrypting content: $content" );
+
+        // Encrypt the content using NIP-04
+        $encrypted_content = Nostr_Login_Pay_Crypto_PHP::nip04_encrypt(
+            $content,
+            $connection['pubkey'],
+            $connection['secret']
+        );
         
-        if ( is_wp_error( $encrypted_content ) ) {
-            return $encrypted_content;
+        if ( ! $encrypted_content ) {
+            return new WP_Error( 'encryption_failed', 'Failed to encrypt NWC request' );
+        }
+
+        error_log( "NWC Client: Encrypted content: " . substr( $encrypted_content, 0, 50 ) . '...' );
+
+        // Get pubkey from secret
+        $pubkey = Nostr_Login_Pay_Crypto_PHP::get_public_key( $connection['secret'] );
+        if ( ! $pubkey ) {
+            return new WP_Error( 'pubkey_derivation_failed', 'Failed to derive public key from secret' );
         }
 
         $event = array(
             'kind' => 23194,
             'created_at' => time(),
+            'pubkey' => $pubkey,
             'tags' => array(
                 array( 'p', $connection['pubkey'] ),
             ),
@@ -115,7 +158,13 @@ class Nostr_Login_Pay_NWC_Client {
         );
 
         // Sign the event
-        $signed_event = $this->sign_event( $event, $connection['secret'] );
+        $signed_event = Nostr_Login_Pay_Crypto_PHP::sign_event( $event, $connection['secret'] );
+        
+        if ( ! $signed_event ) {
+            return new WP_Error( 'signing_failed', 'Failed to sign NWC request event' );
+        }
+
+        error_log( "NWC Client: Signed event ID: " . $signed_event['id'] );
         
         return $signed_event;
     }
@@ -129,22 +178,106 @@ class Nostr_Login_Pay_NWC_Client {
      * @return array|WP_Error Response event or error
      */
     private function send_to_relay( $relay_url, $event, $pubkey ) {
-        // For now, return a simulated response
-        // TODO: Implement actual Nostr relay communication via WebSocket or HTTP
-        
-        // This would require:
-        // 1. Opening WebSocket connection to relay
-        // 2. Sending ["EVENT", event] message
-        // 3. Subscribing to responses with ["REQ", subscription_id, filter]
-        // 4. Waiting for ["EVENT", subscription_id, response_event]
-        // 5. Closing connection
-        
-        // For MVP, we'll use a placeholder that simulates the response
-        error_log( 'NWC Request: ' . wp_json_encode( $event ) );
-        
+        if ( ! class_exists( 'WebSocket\Client' ) ) {
+            error_log( 'NWC Client: WebSocket library not found. Using HTTP fallback.' );
+            return $this->send_via_http_fallback( $relay_url, $event, $pubkey );
+        }
+
+        try {
+            error_log( "NWC Client: Connecting to relay: $relay_url" );
+            
+            $client = new \WebSocket\Client( $relay_url, array(
+                'timeout' => 30,
+            ) );
+
+            // Generate subscription ID
+            $sub_id = bin2hex( random_bytes( 8 ) );
+            $our_pubkey = $event['pubkey'];
+
+            // Subscribe to responses from the wallet
+            $subscription = array(
+                'REQ',
+                $sub_id,
+                array(
+                    'kinds' => array( 23195 ), // NWC response kind
+                    'authors' => array( $pubkey ),
+                    '#p' => array( $our_pubkey ),
+                    'since' => time() - 5,
+                ),
+            );
+            
+            error_log( "NWC Client: Subscribing: " . wp_json_encode( $subscription ) );
+            $client->send( wp_json_encode( $subscription ) );
+
+            // Send the event
+            $event_message = array( 'EVENT', $event );
+            error_log( "NWC Client: Sending event: " . wp_json_encode( $event_message ) );
+            $client->send( wp_json_encode( $event_message ) );
+
+            // Wait for response (max 30 seconds)
+            $start_time = time();
+            $response_event = null;
+
+            while ( time() - $start_time < 30 ) {
+                try {
+                    $message = $client->receive();
+                    error_log( "NWC Client: Received message: " . $message );
+                    
+                    $data = json_decode( $message, true );
+                    if ( ! $data || ! is_array( $data ) ) {
+                        continue;
+                    }
+
+                    // Check for EVENT message
+                    if ( $data[0] === 'EVENT' && $data[1] === $sub_id && isset( $data[2] ) ) {
+                        $response_event = $data[2];
+                        error_log( "NWC Client: Got response event!" );
+                        break;
+                    }
+
+                    // Check for OK or NOTICE messages
+                    if ( $data[0] === 'OK' ) {
+                        error_log( "NWC Client: Event accepted: " . wp_json_encode( $data ) );
+                    } elseif ( $data[0] === 'NOTICE' ) {
+                        error_log( "NWC Client: Relay notice: " . $data[1] );
+                    }
+                } catch ( \WebSocket\ConnectionException $e ) {
+                    // Timeout, continue waiting
+                    usleep( 100000 ); // 100ms
+                }
+            }
+
+            // Close subscription and connection
+            $close_message = array( 'CLOSE', $sub_id );
+            $client->send( wp_json_encode( $close_message ) );
+            $client->close();
+
+            if ( ! $response_event ) {
+                return new WP_Error( 'timeout', 'No response from wallet relay' );
+            }
+
+            return $response_event;
+
+        } catch ( Exception $e ) {
+            error_log( 'NWC Client: WebSocket error: ' . $e->getMessage() );
+            return new WP_Error( 'websocket_error', $e->getMessage() );
+        }
+    }
+
+    /**
+     * HTTP fallback for relays that support HTTP
+     *
+     * @param string $relay_url Relay URL
+     * @param array  $event     Signed event
+     * @param string $pubkey    Wallet pubkey
+     * @return array|WP_Error Response event or error
+     */
+    private function send_via_http_fallback( $relay_url, $event, $pubkey ) {
+        // Some relays support HTTP POST, try that
+        // This is a simplified version, real implementation would need to poll for responses
         return new WP_Error(
-            'not_implemented',
-            __( 'NWC protocol communication not yet fully implemented. This requires WebSocket support.', 'nostr-outbox-wordpress' )
+            'websocket_required',
+            'WebSocket library required for NWC. Install via: composer require textalk/websocket'
         );
     }
 
@@ -152,19 +285,69 @@ class Nostr_Login_Pay_NWC_Client {
      * Parse NWC response event
      *
      * @param array $response_event Response event from relay
+     * @param array $connection NWC connection data
      * @return array|WP_Error Parsed response or error
      */
-    private function parse_nwc_response( $response_event ) {
+    private function parse_nwc_response( $response_event, $connection ) {
         if ( empty( $response_event['content'] ) ) {
-            return new WP_Error( 'empty_response', __( 'Empty response from wallet', 'nostr-outbox-wordpress' ) );
+            return new WP_Error( 'empty_response', 'Empty response from wallet' );
         }
 
-        // Decrypt content
-        // Parse JSON response
-        // Check for errors
-        // Return result
+        if ( ! class_exists( 'Nostr_Login_Pay_Crypto_PHP' ) ) {
+            return new WP_Error( 'crypto_not_loaded', 'Crypto library not loaded' );
+        }
+
+        error_log( "NWC Client: Parsing response event..." );
+        error_log( "NWC Client: Response content: " . substr( $response_event['content'], 0, 100 ) . '...' );
+
+        // Decrypt the response content using NIP-04
+        $decrypted_content = Nostr_Login_Pay_Crypto_PHP::nip04_decrypt(
+            $response_event['content'],
+            $response_event['pubkey'], // Sender is the wallet
+            $connection['secret']       // Our secret key
+        );
         
-        return array();
+        if ( ! $decrypted_content ) {
+            error_log( "NWC Client: Decryption failed!" );
+            return new WP_Error( 'decryption_failed', 'Failed to decrypt NWC response' );
+        }
+
+        error_log( "NWC Client: Decrypted content: $decrypted_content" );
+
+        // Parse JSON response
+        $response_data = json_decode( $decrypted_content, true );
+        
+        if ( ! $response_data ) {
+            return new WP_Error(
+                'invalid_response',
+                'Failed to parse NWC response JSON: ' . json_last_error_msg()
+            );
+        }
+
+        // Check for errors in response
+        if ( isset( $response_data['error'] ) ) {
+            $error_msg = isset( $response_data['error']['message'] ) 
+                ? $response_data['error']['message'] 
+                : ( isset( $response_data['error']['code'] ) 
+                    ? 'Error code: ' . $response_data['error']['code'] 
+                    : 'Unknown NWC error' );
+            
+            error_log( "NWC Client: Error in response: $error_msg" );
+            
+            return new WP_Error(
+                'nwc_error',
+                $error_msg,
+                $response_data['error']
+            );
+        }
+
+        // Return the result
+        if ( isset( $response_data['result'] ) ) {
+            error_log( "NWC Client: Success! Result: " . wp_json_encode( $response_data['result'] ) );
+            return $response_data['result'];
+        }
+
+        return $response_data;
     }
 
     /**
