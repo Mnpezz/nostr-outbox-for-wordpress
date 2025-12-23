@@ -3,7 +3,7 @@
  * Plugin Name: NOW - Nostr Outbox for WordPress
  * Plugin URI: https://github.com/mnpezz/nostr-outboxfor-wordpress
  * Description: Send WordPress and WooCommerce notifications via Nostr instead of email. Includes Lightning payments, Nostr login, NIP-05 verification, and encrypted direct messaging.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: mnpezz
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -21,13 +21,13 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Define plugin constants
-define( 'NOW_VERSION', '1.1.0' );
+define( 'NOW_VERSION', '1.2.0' );
 define( 'NOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
 // Legacy constants for backward compatibility
-define( 'NOSTR_LOGIN_PAY_VERSION', '1.1.0' );
+define( 'NOSTR_LOGIN_PAY_VERSION', '1.2.0' );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -130,6 +130,7 @@ class Nostr_Login_And_Pay {
         $includes = array(
             'includes/class-nostr-auth.php',
             'includes/class-nwc-wallet.php',
+            'includes/class-nwc-client.php',
             'includes/class-lnurl-service.php',
             'includes/class-payment-webhook.php',
             'includes/class-nwc-php-client.php',
@@ -141,6 +142,9 @@ class Nostr_Login_And_Pay {
             'includes/class-nostr-connect.php',
             'includes/class-dm-admin.php',
             'includes/class-nostr-crypto-php.php',
+            'includes/class-zap-rewards-processor.php',
+            'includes/class-zap-rewards.php',
+            'includes/class-zap-rewards-admin.php',
         );
 
         foreach ( $includes as $file ) {
@@ -193,6 +197,16 @@ class Nostr_Login_And_Pay {
         // Initialize DM Admin
         if ( class_exists( 'Nostr_Login_Pay_DM_Admin' ) ) {
             Nostr_Login_Pay_DM_Admin::instance();
+        }
+
+        // Initialize Zap Rewards
+        if ( class_exists( 'Nostr_Outbox_Zap_Rewards' ) ) {
+            Nostr_Outbox_Zap_Rewards::instance();
+        }
+
+        // Initialize Zap Rewards Admin
+        if ( is_admin() && class_exists( 'Nostr_Outbox_Zap_Rewards_Admin' ) ) {
+            Nostr_Outbox_Zap_Rewards_Admin::instance();
         }
     }
 
@@ -700,6 +714,11 @@ function nostr_login_pay_activate() {
     }
     if ( get_option( 'nostr_login_pay_nwc_payment_timeout' ) === false ) {
         add_option( 'nostr_login_pay_nwc_payment_timeout', 300 );
+    }
+    
+    // Create Zap Rewards database table
+    if ( class_exists( 'Nostr_Outbox_Zap_Rewards' ) ) {
+        Nostr_Outbox_Zap_Rewards::activate();
     }
     
     // Flush rewrite rules to register custom endpoints
