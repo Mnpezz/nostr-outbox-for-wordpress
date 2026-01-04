@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: NOW - Nostr Outbox for WordPress
- * Plugin URI: https://github.com/mnpezz/nostr-outboxfor-wordpress
+ * Plugin URI: https://github.com/Mnpezz/nostr-outbox-for-wordpress
  * Description: Send WordPress and WooCommerce notifications via Nostr instead of email. Includes Lightning payments, Nostr login, NIP-05 verification, and encrypted direct messaging.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: mnpezz
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -21,13 +21,13 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Define plugin constants
-define( 'NOW_VERSION', '1.2.0' );
+define( 'NOW_VERSION', '1.3.0' );
 define( 'NOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
 // Legacy constants for backward compatibility
-define( 'NOSTR_LOGIN_PAY_VERSION', '1.2.0' );
+define( 'NOSTR_LOGIN_PAY_VERSION', '1.3.0' );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -92,13 +92,11 @@ class Nostr_Login_And_Pay {
         // Include required files
         $this->includes();
 
-        // Initialize components
-        add_action( 'plugins_loaded', array( $this, 'init_components' ) );
-
         // Enqueue scripts and styles
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
         add_action( 'login_enqueue_scripts', array( $this, 'enqueue_login_assets' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
+        add_action( 'init', array( $this, 'init_components' ) );
 
         // Add login buttons to WooCommerce pages
         add_action( 'woocommerce_before_customer_login_form', array( $this, 'add_nostr_login_button_before_form' ) );
@@ -130,7 +128,6 @@ class Nostr_Login_And_Pay {
         $includes = array(
             'includes/class-nostr-auth.php',
             'includes/class-nwc-wallet.php',
-            'includes/class-nwc-client.php',
             'includes/class-lnurl-service.php',
             'includes/class-payment-webhook.php',
             'includes/class-nwc-php-client.php',
@@ -142,9 +139,6 @@ class Nostr_Login_And_Pay {
             'includes/class-nostr-connect.php',
             'includes/class-dm-admin.php',
             'includes/class-nostr-crypto-php.php',
-            'includes/class-zap-rewards-processor.php',
-            'includes/class-zap-rewards.php',
-            'includes/class-zap-rewards-admin.php',
         );
 
         foreach ( $includes as $file ) {
@@ -198,22 +192,29 @@ class Nostr_Login_And_Pay {
         if ( class_exists( 'Nostr_Login_Pay_DM_Admin' ) ) {
             Nostr_Login_Pay_DM_Admin::instance();
         }
-
-        // Initialize Zap Rewards
-        if ( class_exists( 'Nostr_Outbox_Zap_Rewards' ) ) {
-            Nostr_Outbox_Zap_Rewards::instance();
-        }
-
-        // Initialize Zap Rewards Admin
-        if ( is_admin() && class_exists( 'Nostr_Outbox_Zap_Rewards_Admin' ) ) {
-            Nostr_Outbox_Zap_Rewards_Admin::instance();
-        }
     }
 
     /**
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
+        // Load nostr-login polyfill (for Mobile/Amber support)
+        wp_enqueue_script(
+            'nostr-login-polyfill',
+            'https://www.unpkg.com/nostr-login@latest/dist/unpkg.js',
+            array(),
+            NOSTR_LOGIN_PAY_VERSION,
+            false // Head
+        );
+
+        // Add attributes to nostr-login script
+        add_filter( 'script_loader_tag', function( $tag, $handle ) {
+            if ( 'nostr-login-polyfill' !== $handle ) {
+                return $tag;
+            }
+            return str_replace( ' src', ' data-no-banner="true" src', $tag );
+        }, 10, 2 );
+
         // Load nostr-tools FIRST (Alby SDK needs it!)
         // Using 1.17.0 - last v1.x version with bundle (compatible with Alby SDK)
         wp_enqueue_script(
@@ -295,6 +296,62 @@ class Nostr_Login_And_Pay {
                     'ajaxUrl' => admin_url( 'admin-ajax.php' ),
                     'nonce' => wp_create_nonce( 'nostr-dm-sender' ),
                     'isAdmin' => '1',
+                )
+            );
+        }
+
+        // Enqueue Chat Widget if enabled
+        $chat_enabled = get_option( 'nostr_login_pay_enable_chat' );
+        if ( $chat_enabled ) {
+            wp_enqueue_style(
+                'nostr-chat-widget',
+                NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/chat-widget.css',
+                array(),
+                NOSTR_LOGIN_PAY_VERSION
+            );
+
+            wp_enqueue_script(
+                'nostr-chat-widget',
+                NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/chat-widget.js',
+                array( 'jquery', 'nostr-tools' ),
+                NOSTR_LOGIN_PAY_VERSION,
+                true
+            );
+            
+            // Get support npub
+            $support_npub = get_option( 'nostr_login_pay_support_npub' );
+            if ( empty( $support_npub ) ) {
+                // Try to get site identity
+                $site_privkey = get_option( 'nostr_login_pay_site_privkey' );
+                if ( ! empty( $site_privkey ) && class_exists( 'Nostr_Login_Pay_Crypto_PHP' ) ) {
+                    try {
+                        $pubkey = Nostr_Login_Pay_Crypto_PHP::get_public_key( $site_privkey );
+                        if ( $pubkey ) {
+                            $support_npub = $pubkey;
+                        }
+                    } catch ( Exception $e ) {
+                        // Ignore
+                    }
+                }
+            }
+
+            // Get relays
+            $relays = get_option( 'nostr_login_pay_relays' );
+            if ( empty( $relays ) || ! is_array( $relays ) ) {
+                $relays = array(
+                    'wss://relay.damus.io',
+                    'wss://relay.snort.social',
+                    'wss://nos.lol',
+                );
+            }
+
+            wp_localize_script(
+                'nostr-chat-widget',
+                'nostrChatData',
+                array(
+                    'enabled' => true,
+                    'support_npub' => $support_npub,
+                    'relays' => $relays,
                 )
             );
         }
@@ -401,6 +458,42 @@ class Nostr_Login_And_Pay {
             NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/admin.css',
             array(),
             NOSTR_LOGIN_PAY_VERSION
+        );
+
+        // Enqueue Admin Conversations UI
+        wp_enqueue_script(
+            'nostr-admin-conversations',
+            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/js/admin-conversations.js',
+            array( 'jquery', 'nostr-tools' ),
+            NOSTR_LOGIN_PAY_VERSION,
+            true
+        );
+
+        wp_enqueue_style(
+            'nostr-admin-conversations',
+            NOSTR_LOGIN_PAY_PLUGIN_URL . 'assets/css/admin-conversations.css',
+            array(),
+            NOSTR_LOGIN_PAY_VERSION
+        );
+
+        // Localize data for conversations
+        $sent_messages = get_option( 'nostr_dm_sent_log', array() );
+        $site_privkey = get_option( 'nostr_login_pay_site_privkey' );
+        $relays = get_option( 'nostr_login_pay_relays', array(
+            'wss://relay.damus.io',
+            'wss://nos.lol',
+            'wss://relay.primal.net',
+            'wss://blastr.f7z.io',
+        ) );
+
+        wp_localize_script(
+            'nostr-admin-conversations',
+            'nostrChatAdminData',
+            array(
+                'sentMessages' => $sent_messages,
+                'sitePrivkey' => $site_privkey,
+                'relays' => $relays,
+            )
         );
     }
 
@@ -709,16 +802,9 @@ function nostr_login_pay_activate() {
     if ( get_option( 'nostr_login_pay_default_role' ) === false ) {
         add_option( 'nostr_login_pay_default_role', 'customer' );
     }
-    if ( get_option( 'nostr_login_pay_relays' ) === false ) {
-        add_option( 'nostr_login_pay_relays', "wss://relay.damus.io\nwss://relay.primal.net\nwss://nos.lol" );
-    }
+        add_option( 'nostr_login_pay_relays', "wss://relay.damus.io\nwss://nos.lol\nwss://relay.primal.net\nwss://blastr.f7z.io" );
     if ( get_option( 'nostr_login_pay_nwc_payment_timeout' ) === false ) {
         add_option( 'nostr_login_pay_nwc_payment_timeout', 300 );
-    }
-    
-    // Create Zap Rewards database table
-    if ( class_exists( 'Nostr_Outbox_Zap_Rewards' ) ) {
-        Nostr_Outbox_Zap_Rewards::activate();
     }
     
     // Flush rewrite rules to register custom endpoints
