@@ -838,6 +838,9 @@ function nostr_login_pay_activate() {
     if ( get_option( 'nostr_login_pay_relays' ) === false ) {
         add_option( 'nostr_login_pay_relays', "wss://relay.damus.io\nwss://relay.primal.net\nwss://nos.lol" );
     }
+    if ( get_option( 'nostr_group_chats' ) === false ) {
+        add_option( 'nostr_group_chats', array() );
+    }
     if ( get_option( 'nostr_login_pay_nwc_payment_timeout' ) === false ) {
         add_option( 'nostr_login_pay_nwc_payment_timeout', 300 );
     }
