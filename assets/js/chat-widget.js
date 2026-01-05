@@ -36,6 +36,12 @@
         },
 
         injectHTML: function () {
+            let avatarHtml = '';
+            if (nostrChatData.show_avatar) {
+                const avatarUrl = nostrChatData.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+                avatarHtml = `<img src="${avatarUrl}" class="nostr-chat-header-avatar" alt="Avatar">`;
+            }
+
             const html = `
                 <div id="nostr-chat-widget-button" class="nostr-chat-widget-button" title="Chat with Support">
                     <div id="nostr-chat-unread-badge" class="nostr-chat-unread-badge"></div>
@@ -46,7 +52,10 @@
 
                 <div id="nostr-chat-window" class="nostr-chat-window">
                     <div class="nostr-chat-header">
-                        <span class="nostr-chat-title">Customer Service</span>
+                        <div class="nostr-chat-header-left">
+                            ${avatarHtml}
+                            <span class="nostr-chat-title">Customer Service</span>
+                        </div>
                         <button class="nostr-chat-close">&times;</button>
                     </div>
                     
