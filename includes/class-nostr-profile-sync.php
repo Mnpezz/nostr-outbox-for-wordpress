@@ -352,8 +352,9 @@ class Nostr_Login_Pay_Profile_Sync {
 
         $updated = false;
 
-        // Update display name
-        if ( ! empty( $profile_data['name'] ) ) {
+        // Update display name (if enabled)
+        $sync_username = get_option( 'nostr_login_pay_sync_username', '1' ) === '1';
+        if ( $sync_username && ! empty( $profile_data['name'] ) ) {
             wp_update_user( array(
                 'ID' => $user_id,
                 'display_name' => sanitize_text_field( $profile_data['name'] ),
@@ -401,6 +402,30 @@ class Nostr_Login_Pay_Profile_Sync {
         // Update NIP-05
         if ( ! empty( $profile_data['nip05'] ) ) {
             update_user_meta( $user_id, 'nostr_nip05', sanitize_text_field( $profile_data['nip05'] ) );
+            $updated = true;
+        }
+
+        // Sync Banner (if enabled)
+        $sync_banner = get_option( 'nostr_login_pay_sync_banner' ) === '1';
+        if ( $sync_banner && ! empty( $profile_data['banner'] ) ) {
+            update_user_meta( $user_id, 'nostr_banner', esc_url_raw( $profile_data['banner'] ) );
+            $updated = true;
+        }
+
+        // Sync Website (if enabled)
+        $sync_website = get_option( 'nostr_login_pay_sync_website' ) === '1';
+        if ( $sync_website && ! empty( $profile_data['website'] ) ) {
+            wp_update_user( array(
+                'ID' => $user_id,
+                'user_url' => esc_url_raw( $profile_data['website'] ),
+            ) );
+            $updated = true;
+        }
+
+        // Sync Lightning Address (if enabled)
+        $sync_lud16 = get_option( 'nostr_login_pay_sync_lud16', '1' ) === '1';
+        if ( $sync_lud16 && ! empty( $profile_data['lud16'] ) ) {
+            update_user_meta( $user_id, 'nostr_lud16', sanitize_text_field( $profile_data['lud16'] ) );
             $updated = true;
         }
 
