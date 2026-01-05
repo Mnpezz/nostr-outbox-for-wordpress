@@ -4,7 +4,7 @@
  * Fetches user profile metadata (kind 0) from Nostr relays and updates WordPress profile
  */
 
-(function() {
+(function () {
     'use strict';
 
     // Check if we have NostrTools available
@@ -19,31 +19,34 @@
     async function fetchNostrProfile(pubkey, relays) {
         try {
             console.log('Fetching Nostr profile for', pubkey.substring(0, 16) + '...');
-            
+
             const pool = new window.NostrTools.SimplePool();
-            
+
             // Query for kind 0 metadata events
             const events = await pool.list(relays, [{
                 kinds: [0],
                 authors: [pubkey],
                 limit: 1
             }]);
-            
+
             pool.close(relays);
-            
+
             if (!events || events.length === 0) {
                 throw new Error('No profile found on relays');
             }
-            
+
             // Parse metadata from the most recent event
             const metadata = JSON.parse(events[0].content);
-            
+
             console.log('Found Nostr profile:', metadata);
-            
+
             return {
                 name: metadata.name || metadata.display_name || '',
                 about: metadata.about || '',
                 picture: metadata.picture || metadata.image || '',
+                banner: metadata.banner || '',
+                website: metadata.website || '',
+                lud16: metadata.lud16 || '',
                 nip05: metadata.nip05 || ''
             };
         } catch (error) {
@@ -67,13 +70,13 @@
                     profile_data: JSON.stringify(profileData)
                 })
             });
-            
+
             const data = await response.json();
-            
+
             if (!data.success) {
                 throw new Error(data.data?.message || 'Failed to update profile');
             }
-            
+
             return data;
         } catch (error) {
             console.error('Error updating WordPress profile:', error);
@@ -84,14 +87,14 @@
     /**
      * Main sync function
      */
-    window.syncNostrProfile = async function(pubkey, userId, relays) {
+    window.syncNostrProfile = async function (pubkey, userId, relays) {
         try {
             // Fetch from Nostr
             const profileData = await fetchNostrProfile(pubkey, relays);
-            
+
             // Update WordPress
             await updateWordPressProfile(userId, profileData);
-            
+
             return true;
         } catch (error) {
             throw error;
