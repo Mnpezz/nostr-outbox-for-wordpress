@@ -142,6 +142,8 @@ class Nostr_Login_Pay_Admin_Settings {
                 'nostr_login_pay_sync_website',
                 'nostr_login_pay_sync_username',
                 'nostr_login_pay_sync_lud16',
+                'nostr_login_pay_enable_chat',
+                'nostr_login_pay_show_chat_avatar',
             ),
             'nostr_login_pay_nwc' => array(
                 'nostr_login_pay_nwc_enable_payment_gateway',
@@ -170,6 +172,8 @@ class Nostr_Login_Pay_Admin_Settings {
             'nostr_login_pay_default_role' => 'customer',
             'nostr_login_pay_relays' => "wss://relay.damus.io\nwss://relay.primal.net\nwss://nos.lol",
             'nostr_login_pay_nwc_payment_timeout' => 300,
+            'nostr_login_pay_enable_chat' => '1',
+            'nostr_login_pay_show_chat_avatar' => '1',
         );
 
         foreach ( $defaults as $option_name => $default_value ) {
@@ -286,6 +290,12 @@ class Nostr_Login_Pay_Admin_Settings {
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_website' );
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_username' );
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_lud16' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_enable_chat' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_show_chat_avatar' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_chat_avatar_url', array(
+            'type' => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+        ) );
 
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_default_role', array(
             'type' => 'string',
@@ -438,6 +448,44 @@ class Nostr_Login_Pay_Admin_Settings {
             array( 'name' => 'nostr_login_pay_relays', 'description' => __( 'One relay URL per line', 'nostr-outbox-wordpress' ) )
         );
         */
+        
+        // Chat Widget Section
+        add_settings_section(
+            'nostr_login_pay_chat_section',
+            __( 'Chat Widget Settings', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_chat_section' ),
+            'nostr-outbox-wordpress-general'
+        );
+
+        add_settings_field(
+            'nostr_login_pay_enable_chat',
+            __( 'Enable Chat Widget', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_chat_section',
+            array( 'name' => 'nostr_login_pay_enable_chat', 'label' => __( 'Show the customer service chat widget on the frontend', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_show_chat_avatar',
+            __( 'Show Customer Service Avatar', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_chat_section',
+            array( 'name' => 'nostr_login_pay_show_chat_avatar', 'label' => __( 'Display an avatar in the chat header', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_chat_avatar_url',
+            __( 'Custom Avatar URL', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_media_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_chat_section',
+            array( 
+                'name' => 'nostr_login_pay_chat_avatar_url', 
+                'description' => __( 'Enter a URL for a custom customer service avatar or choose from media library. If empty, a default icon will be used.', 'nostr-outbox-wordpress' ) 
+            )
+        );
 
         // NWC Settings Section
         add_settings_section(
@@ -601,6 +649,13 @@ class Nostr_Login_Pay_Admin_Settings {
     }
 
     /**
+     * Render chat section description
+     */
+    public function render_chat_section() {
+        echo '<p>' . esc_html__( 'Configure the Nostr customer service chat widget.', 'nostr-outbox-wordpress' ) . '</p>';
+    }
+
+    /**
      * Render NWC section description
      */
     public function render_nwc_section() {
@@ -644,6 +699,26 @@ class Nostr_Login_Pay_Admin_Settings {
             <input type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( $is_checked, true ); ?>>
             <?php echo esc_html( $label ); ?>
         </label>
+        <?php
+    }
+
+    /**
+     * Render media field with picker
+     */
+    public function render_media_field( $args ) {
+        $name = $args['name'];
+        $description = isset( $args['description'] ) ? $args['description'] : '';
+        $value = get_option( $name, '' );
+        ?>
+        <div class="nostr-media-field-wrapper">
+            <input type="text" name="<?php echo esc_attr( $name ); ?>" id="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+            <button type="button" class="button nostr-choose-media" data-target="<?php echo esc_attr( $name ); ?>">
+                <?php _e( 'Choose from Media', 'nostr-outbox-wordpress' ); ?>
+            </button>
+            <?php if ( $description ) : ?>
+                <p class="description"><?php echo esc_html( $description ); ?></p>
+            <?php endif; ?>
+        </div>
         <?php
     }
 
