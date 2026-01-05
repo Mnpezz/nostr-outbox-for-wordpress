@@ -138,6 +138,10 @@ class Nostr_Login_Pay_Admin_Settings {
                 'nostr_login_pay_enable_login',
                 'nostr_login_pay_enable_nwc',
                 'nostr_login_pay_auto_create_account',
+                'nostr_login_pay_sync_banner',
+                'nostr_login_pay_sync_website',
+                'nostr_login_pay_sync_username',
+                'nostr_login_pay_sync_lud16',
             ),
             'nostr_login_pay_nwc' => array(
                 'nostr_login_pay_nwc_enable_payment_gateway',
@@ -278,6 +282,10 @@ class Nostr_Login_Pay_Admin_Settings {
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_enable_login' );
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_enable_nwc' );
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_auto_create_account' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_banner' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_website' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_username' );
+        register_setting( 'nostr_login_pay_general', 'nostr_login_pay_sync_lud16' );
 
         register_setting( 'nostr_login_pay_general', 'nostr_login_pay_default_role', array(
             'type' => 'string',
@@ -371,6 +379,50 @@ class Nostr_Login_Pay_Admin_Settings {
             'nostr-outbox-wordpress-general',
             'nostr_login_pay_general_section',
             array( 'name' => 'nostr_login_pay_default_role' )
+        );
+
+        // Profile Sync Section
+        add_settings_section(
+            'nostr_login_pay_profile_sync',
+            __( 'Profile Sync Details', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_profile_sync_section' ),
+            'nostr-outbox-wordpress-general'
+        );
+
+        add_settings_field(
+            'nostr_login_pay_sync_banner',
+            __( 'Sync Banner', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_profile_sync',
+            array( 'name' => 'nostr_login_pay_sync_banner', 'label' => __( 'Import banner image from Nostr', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_sync_website',
+            __( 'Sync Website', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_profile_sync',
+            array( 'name' => 'nostr_login_pay_sync_website', 'label' => __( 'Import website URL from Nostr', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_sync_username',
+            __( 'Sync Username', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_profile_sync',
+            array( 'name' => 'nostr_login_pay_sync_username', 'label' => __( 'Import name/display_name from Nostr', 'nostr-outbox-wordpress' ) )
+        );
+
+        add_settings_field(
+            'nostr_login_pay_sync_lud16',
+            __( 'Sync Lightning Address', 'nostr-outbox-wordpress' ),
+            array( $this, 'render_checkbox_field' ),
+            'nostr-outbox-wordpress-general',
+            'nostr_login_pay_profile_sync',
+            array( 'name' => 'nostr_login_pay_sync_lud16', 'label' => __( 'Import lud16 lightning address from Nostr', 'nostr-outbox-wordpress' ) )
         );
 
         // HIDDEN: Nostr Relays field removed - not used by the plugin
@@ -981,7 +1033,15 @@ class Nostr_Login_Pay_Admin_Settings {
             });
         })();
         </script>
+        ?>
         <?php
+    }
+
+    /**
+     * Render Profile Sync section
+     */
+    public function render_profile_sync_section() {
+        echo '<p>' . esc_html__( 'Choose which details to automatically import from your Nostr profile when you log in.', 'nostr-outbox-wordpress' ) . '</p>';
     }
 }
 
