@@ -3,7 +3,7 @@
  * Plugin Name: NOW - Nostr Outbox for WordPress
  * Plugin URI: https://github.com/Mnpezz/nostr-outbox-for-wordpress
  * Description: Send WordPress and WooCommerce notifications via Nostr instead of email. Includes Lightning payments, Nostr login, NIP-05 verification, and encrypted direct messaging.
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: mnpezz
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -21,13 +21,13 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Define plugin constants
-define( 'NOW_VERSION', '1.3.1' );
+define( 'NOW_VERSION', '1.4.0' );
 define( 'NOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
 // Legacy constants for backward compatibility
-define( 'NOSTR_LOGIN_PAY_VERSION', '1.3.1' );
+define( 'NOSTR_LOGIN_PAY_VERSION', '1.4.0' );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NOSTR_LOGIN_PAY_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -376,6 +376,8 @@ class Nostr_Login_And_Pay {
                     'enabled' => true,
                     'support_npub' => $support_npub,
                     'relays' => $relays,
+                    'show_avatar' => (bool) get_option( 'nostr_login_pay_show_chat_avatar', '1' ),
+                    'avatar_url' => get_option( 'nostr_login_pay_chat_avatar_url', '' ),
                 )
             );
         }
@@ -468,6 +470,8 @@ class Nostr_Login_And_Pay {
         if ( 'settings_page_nostr-outbox-wordpress' !== $hook ) {
             return;
         }
+
+        wp_enqueue_media();
 
         wp_enqueue_script(
             'nostr-outbox-wordpress-admin',
